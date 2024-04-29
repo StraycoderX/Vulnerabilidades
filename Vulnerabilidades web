@@ -1,0 +1,53 @@
+const readline = require('readline');
+const https = require('https');
+
+// Función para analizar el código HTML en busca de posibles vulnerabilidades de XSS
+function analizarCodigoHTML(htmlContent) {
+    const scriptPattern = /<\s*script\s*.*?>/gi; // Expresión regular para encontrar etiquetas <script>
+    const matches = htmlContent.match(scriptPattern);
+
+    if (matches && matches.length > 0) {
+        console.log('Se encontraron las siguientes posibles vulnerabilidades de XSS:');
+        matches.forEach((match, index) => {
+            console.log(`Vulnerabilidad ${index + 1}: ${match}`);
+        });
+    } else {
+        console.log('No se encontraron posibles vulnerabilidades de XSS en la página.');
+    }
+}
+
+// Crear interfaz de lectura
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+// Función para solicitar la URL al usuario y realizar el análisis
+function solicitarURL() {
+    rl.question('Introduce la URL a analizar: ', (url) => {
+        // Realizar solicitud HTTPS para obtener el contenido de la URL
+        https.get(url, (resp) => {
+            let data = '';
+
+            // Recopilar datos mientras se recibe la respuesta
+            resp.on('data', (chunk) => {
+                data += chunk;
+            });
+
+            // Cuando se completa la respuesta, analizar el contenido HTML en busca de vulnerabilidades
+            resp.on('end', () => {
+                analizarCodigoHTML(data);
+
+                // Solicitar otra URL
+                solicitarURL();
+            });
+        }).on('error', (err) => {
+            console.error('Error al realizar la solicitud HTTPS:', err);
+            // Solicitar otra URL
+            solicitarURL();
+        });
+    });
+}
+
+// Iniciar el análisis solicitando la primera URL
+solicitarURL();
