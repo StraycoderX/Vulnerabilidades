@@ -7,7 +7,15 @@ const { analizarXSS } = require('./xss');
 const { analizarOfuscacion } = require('./obfuscation');
 const { analizarLibrerias } = require('./libraries');
 const { analizarTLS } = require('./tls');
+const { analizarActivo } = require('./active');
 
-const reglas = [analizarCabeceras, analizarXSS, analizarOfuscacion, analizarLibrerias, analizarTLS];
+const reglas = [
+    analizarCabeceras,
+    analizarXSS,
+    analizarOfuscacion,
+    analizarLibrerias,
+    analizarTLS,
+    analizarActivo,
+];
 
 module.exports = { reglas };

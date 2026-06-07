@@ -8,10 +8,16 @@ const { parsearHTML } = require('../parser');
 // `vulnerableHasta`: la versión es vulnerable si es < a este valor (semver simple).
 const FIRMAS = [
     { nombre: 'jQuery', regex: /jquery[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '3.5.0', cve: 'XSS en htmlPrefilter (CVE-2020-11022/11023)' },
+    { nombre: 'jQuery UI', regex: /jquery-ui[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '1.13.0', cve: 'XSS en varias opciones (CVE-2021-41182/41183/41184)' },
     { nombre: 'AngularJS', regex: /angular[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '1.8.0', cve: 'múltiples XSS/sandbox bypass' },
     { nombre: 'Bootstrap', regex: /bootstrap[-.](\d+\.\d+\.\d+)(?:\.min)?\.(?:js|css)/i, vulnerableHasta: '3.4.1', cve: 'XSS en data-target (CVE-2018-14041 y rel.)' },
     { nombre: 'Lodash', regex: /lodash[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '4.17.21', cve: 'prototype pollution (CVE-2019-10744 y rel.)' },
     { nombre: 'Moment.js', regex: /moment[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '2.29.4', cve: 'ReDoS / path traversal (CVE-2022-31129)' },
+    { nombre: 'Handlebars', regex: /handlebars[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '4.7.7', cve: 'prototype pollution / RCE en plantillas (CVE-2021-23369)' },
+    { nombre: 'Vue', regex: /vue[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '2.6.11', cve: 'ReDoS en parseHTML (CVE-2019-...)' },
+    { nombre: 'Axios', regex: /axios[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '0.21.2', cve: 'SSRF / fuga de credenciales en redirecciones (CVE-2020-28168)' },
+    { nombre: 'DOMPurify', regex: /(?:dom)?purify[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '2.4.0', cve: 'bypass de saneamiento (mXSS)' },
+    { nombre: 'Underscore', regex: /underscore[-.](\d+\.\d+\.\d+)(?:\.min)?\.js/i, vulnerableHasta: '1.13.0', cve: 'inyección de código en template (CVE-2021-23358)' },
 ];
 
 // Compara dos versiones semver simples (x.y.z). Devuelve <0, 0 o >0.

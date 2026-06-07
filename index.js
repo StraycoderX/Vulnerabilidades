@@ -3,12 +3,14 @@
 const readline = require('readline');
 const fs = require('fs');
 const { escanear, exitCodePorHallazgos } = require('./src/engine');
+const { rastrear } = require('./src/crawl');
 const { mapearConcurrencia } = require('./src/pool');
 const {
     imprimirReporte,
     huellasDeReportes,
     diffContraBaseline,
     aSARIF,
+    aHTML,
 } = require('./src/report');
 
 // --- Modo interactivo ------------------------------------------------------
@@ -46,15 +48,30 @@ async function modoInteractivo() {
 // --- Modo CLI no interactivo ----------------------------------------------
 async function modoCLI(urls, opciones) {
     let salida = 0;
-    // Escaneo concurrente con límite, preservando el orden de las URLs.
-    const reportes = await mapearConcurrencia(urls, opciones.concurrencia, async (u) => {
-        try {
-            return await escanear(u);
-        } catch (err) {
-            salida = 2;
-            return { url: u, error: err.message };
+    let reportes;
+
+    if (opciones.crawl > 0) {
+        // Crawling: rastrea cada semilla (mismo origen) y agrega los reportes.
+        reportes = [];
+        for (const semilla of urls) {
+            try {
+                reportes.push(...(await rastrear(semilla, opciones)));
+            } catch (err) {
+                reportes.push({ url: semilla, error: err.message });
+                salida = 2;
+            }
         }
-    });
+    } else {
+        // Escaneo concurrente con límite, preservando el orden de las URLs.
+        reportes = await mapearConcurrencia(urls, opciones.concurrencia, async (u) => {
+            try {
+                return await escanear(u, opciones);
+            } catch (err) {
+                salida = 2;
+                return { url: u, error: err.message };
+            }
+        });
+    }
 
     // Baseline / diff: reportar solo hallazgos nuevos frente al escaneo previo.
     let aMostrar = reportes;
@@ -77,7 +94,9 @@ async function modoCLI(urls, opciones) {
     }
 
     // Salida.
-    if (opciones.sarif) {
+    if (opciones.html) {
+        console.log(aHTML(aMostrar));
+    } else if (opciones.sarif) {
         console.log(JSON.stringify(aSARIF(aMostrar), null, 2));
     } else if (opciones.json) {
         console.log(JSON.stringify(aMostrar.length === 1 ? aMostrar[0] : aMostrar, null, 2));
@@ -107,6 +126,13 @@ Uso:
                                          Igual, y actualiza la baseline al terminar
   node index.js --input urls.txt         Analiza las URLs de un fichero (una por línea)
   node index.js --concurrency N <urls>   Nº de escaneos en paralelo (por defecto 5)
+  node index.js --html <url>             Salida como reporte HTML
+  node index.js --crawl N [--max-pages M] <url>
+                                         Rastrea el mismo origen hasta profundidad N
+  node index.js --header "K: V" <url>    Cabecera personalizada (repetible)
+  node index.js --cookie "k=v" <url>     Cookie de sesión (escaneo autenticado)
+  node index.js --active --authorized <url?param=x>
+                                         Sonda de XSS reflejado (¡solo con autorización!)
   node index.js -h | --help              Muestra esta ayuda
 
 Código de salida (modo CLI): 0 sin hallazgos altos/medios, 1 con ellos, 2 si hubo errores.`);
@@ -119,16 +145,32 @@ async function main() {
         return;
     }
 
-    const opciones = { json: false, sarif: false, baseline: null, actualizarBaseline: false, concurrencia: 5 };
+    const opciones = {
+        json: false, sarif: false, html: false,
+        baseline: null, actualizarBaseline: false,
+        concurrencia: 5, crawl: 0, maxPaginas: 20,
+        active: false, authorized: false,
+        headers: {}, cookie: null,
+    };
     const urls = [];
     for (let i = 0; i < args.length; i++) {
         const a = args[i];
         if (a === '--json') opciones.json = true;
         else if (a === '--sarif') opciones.sarif = true;
+        else if (a === '--html') opciones.html = true;
         else if (a === '--update-baseline') opciones.actualizarBaseline = true;
         else if (a === '--baseline') opciones.baseline = args[++i];
         else if (a === '--concurrency') opciones.concurrencia = Math.max(1, Number(args[++i]) || 5);
-        else if (a === '--input') {
+        else if (a === '--crawl') opciones.crawl = Math.max(0, Number(args[++i]) || 0);
+        else if (a === '--max-pages') opciones.maxPaginas = Math.max(1, Number(args[++i]) || 20);
+        else if (a === '--active') opciones.active = true;
+        else if (a === '--authorized') opciones.authorized = true;
+        else if (a === '--cookie') opciones.cookie = args[++i];
+        else if (a === '--header') {
+            const h = args[++i] || '';
+            const idx = h.indexOf(':');
+            if (idx > 0) opciones.headers[h.slice(0, idx).trim()] = h.slice(idx + 1).trim();
+        } else if (a === '--input') {
             const fichero = args[++i];
             const lineas = fs.readFileSync(fichero, 'utf8')
                 .split('\n')
@@ -136,6 +178,12 @@ async function main() {
                 .filter((l) => l && !l.startsWith('#'));
             urls.push(...lineas);
         } else urls.push(a);
+    }
+
+    if (opciones.active && !opciones.authorized) {
+        console.error('El modo activo (--active) envía peticiones de prueba y solo debe usarse sobre objetivos\npropios o con autorización explícita. Añade --authorized para confirmarlo.');
+        process.exitCode = 2;
+        return;
     }
 
     if (urls.length === 0) {

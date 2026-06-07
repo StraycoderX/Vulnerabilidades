@@ -75,12 +75,17 @@ function lookupFijo(address, family) {
 
 // --- Descarga del HTML con controles de seguridad --------------------------
 // Recibe { url, address, family } y devuelve { statusCode, headers, body }.
-function descargar(target, redirecciones = 0) {
+// `extra.headers` permite enviar cabeceras/cookies propias (escaneo autenticado).
+function descargar(target, extra = {}, redirecciones = 0) {
     const { url, address, family } = target;
     return new Promise((resolve, reject) => {
         const cliente = url.protocol === 'https:' ? https : http;
 
-        const opciones = { rejectUnauthorized: true, lookup: lookupFijo(address, family) };
+        const opciones = {
+            rejectUnauthorized: true,
+            lookup: lookupFijo(address, family),
+            headers: extra.headers || {},
+        };
         const req = cliente.get(url, opciones, (resp) => {
             const { statusCode, headers } = resp;
 
@@ -92,7 +97,7 @@ function descargar(target, redirecciones = 0) {
                 }
                 const destino = new URL(headers.location, url);
                 return validarObjetivo(destino.href)
-                    .then((t) => resolve(descargar(t, redirecciones + 1)))
+                    .then((t) => resolve(descargar(t, extra, redirecciones + 1)))
                     .catch(reject);
             }
 

@@ -100,10 +100,55 @@ function aSARIF(reportes) {
     };
 }
 
+// --- Reporte HTML ----------------------------------------------------------
+function escaparHTML(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function aHTML(reportes) {
+    const colores = { alta: '#d32f2f', media: '#f57c00', baja: '#0288d1', info: '#757575' };
+    const filas = [];
+    for (const r of reportes) {
+        if (r.error) {
+            filas.push(`<tr><td>${escaparHTML(r.url)}</td><td colspan="3" class="err">Error: ${escaparHTML(r.error)}</td></tr>`);
+            continue;
+        }
+        for (const f of r.hallazgos) {
+            filas.push(
+                `<tr>` +
+                    `<td>${escaparHTML(r.url)}</td>` +
+                    `<td><span class="sev" style="background:${colores[f.severidad]}">${SEVERIDAD[f.severidad].etiqueta}</span></td>` +
+                    `<td>${escaparHTML(f.categoria)}</td>` +
+                    `<td>${escaparHTML(f.mensaje)}${f.detalle ? `<br><small>${escaparHTML(f.detalle)}</small>` : ''}</td>` +
+                    `</tr>`
+            );
+        }
+    }
+    return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Reporte de seguridad web</title>
+<style>
+body{font-family:system-ui,Arial,sans-serif;margin:2rem;color:#222}
+h1{font-size:1.4rem} table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ddd;padding:.5rem;text-align:left;vertical-align:top;font-size:.9rem}
+th{background:#f5f5f5} .sev{color:#fff;padding:.1rem .5rem;border-radius:.3rem;font-size:.75rem}
+.err{color:#d32f2f} small{color:#666}
+</style></head><body>
+<h1>Reporte de seguridad web</h1>
+<p>${reportes.length} URL(s) analizada(s) · ${new Date().toISOString()}</p>
+<table><thead><tr><th>URL</th><th>Severidad</th><th>Categoría</th><th>Hallazgo</th></tr></thead>
+<tbody>${filas.join('\n') || '<tr><td colspan="4">Sin hallazgos.</td></tr>'}</tbody></table>
+</body></html>`;
+}
+
 module.exports = {
     imprimirReporte,
     huella,
     huellasDeReportes,
     diffContraBaseline,
     aSARIF,
+    aHTML,
 };

@@ -17,6 +17,11 @@ node index.js --sarif <url>              # Salida SARIF (GitHub Code Scanning)
 node index.js --baseline base.json <url> # Reporta solo hallazgos NUEVOS vs. baseline
 node index.js --input urls.txt           # Analiza URLs de un fichero (una por línea)
 node index.js --concurrency N <urls>     # Escaneos en paralelo (por defecto 5)
+node index.js --html <url>               # Reporte HTML
+node index.js --crawl N [--max-pages M] <url>   # Rastrea el mismo origen (profundidad N)
+node index.js --header "K: V" <url>      # Cabecera personalizada (repetible)
+node index.js --cookie "k=v" <url>       # Escaneo autenticado con cookie de sesión
+node index.js --active --authorized <url?p=x>   # Sonda de XSS reflejado (¡solo autorizado!)
 node index.js --help                     # Ayuda
 npm test                                 # Tests (node --test)
 npm run check                            # Sintaxis + lint + tests
@@ -39,7 +44,9 @@ categoría y referencia. Añadir una regla nueva es crear un módulo y registrar
 en `src/rules/index.js`. El motor (`src/engine.js`) tokeniza el HTML con un
 **parser propio** (`src/parser.js`, sin dependencias), ejecuta las reglas y
 ordena; el reporte (`src/report.js`) genera consola, JSON, SARIF y diff de
-baseline; `src/pool.js` da la concurrencia y `src/tls.js` la inspección TLS.
+baseline (y reporte HTML); `src/pool.js` da la concurrencia, `src/tls.js` la
+inspección TLS, `src/crawl.js` el rastreo de mismo origen y `src/active.js` la
+sonda de XSS reflejado.
 
 ## Qué analiza
 
@@ -60,6 +67,18 @@ baseline; `src/pool.js` da la concurrencia y `src/tls.js` la inspección TLS.
   Lodash y Moment.js con versiones de CVE conocidos.
 - **TLS** (en sitios `https`): protocolo obsoleto (TLS 1.0/1.1, SSLv3 → alta) y
   certificado caducado o próximo a caducar.
+- **XSS reflejado (modo activo)**: con `--active --authorized`, inyecta un marcador
+  inofensivo en cada parámetro de query y reporta si se refleja sin escapar.
+
+## Crawling y escaneo autenticado
+
+- `--crawl N [--max-pages M]`: rastrea enlaces del **mismo origen** por niveles
+  (BFS) hasta profundidad N, revalidando anti-SSRF en cada URL.
+- `--header "K: V"` (repetible) y `--cookie "k=v"`: envían cabeceras/cookies de
+  sesión para analizar zonas autenticadas.
+
+> ⚠️ El modo activo envía peticiones de prueba; úsalo **solo** sobre objetivos
+> propios o con autorización explícita (`--authorized` es obligatorio).
 
 ## Controles de seguridad de la propia herramienta
 
@@ -83,6 +102,6 @@ baseline; `src/pool.js` da la concurrencia y `src/tls.js` la inspección TLS.
 
 ## Próximas mejoras sugeridas
 
-- Ampliar la base de firmas de librerías vulnerables.
-- Escaneo autenticado (cookies/headers de sesión) y crawling con profundidad.
-- Reporte HTML y modo activo (con autorización) para XSS reflejado.
+- Mantener al día la base de firmas de librerías vulnerables.
+- Respetar `robots.txt` y añadir rate-limiting cortés al crawler.
+- Más comprobaciones activas (open redirect, inyección) bajo autorización.

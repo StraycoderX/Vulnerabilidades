@@ -11,10 +11,13 @@ const { analizarXSS } = require('./src/rules/xss');
 const { analizarOfuscacion } = require('./src/rules/obfuscation');
 const { analizarLibrerias, compararVersiones } = require('./src/rules/libraries');
 const { analizarTLS } = require('./src/rules/tls');
+const { analizarActivo } = require('./src/rules/active');
 const { parsearHTML, parsearAtributos } = require('./src/parser');
 const { mapearConcurrencia } = require('./src/pool');
+const { detectarReflejo } = require('./src/active');
+const { extraerEnlacesMismoOrigen } = require('./src/crawl');
 const { analizar, exitCodePorHallazgos } = require('./src/engine');
-const { aSARIF, huellasDeReportes, diffContraBaseline } = require('./src/report');
+const { aSARIF, huellasDeReportes, diffContraBaseline, aHTML } = require('./src/report');
 
 const ctx = (overrides) => ({
     url: new URL('https://ejemplo.com/'),
@@ -168,6 +171,42 @@ test('pool: respeta el límite de concurrencia y conserva el orden', async () =>
     });
     assert.deepStrictEqual(resultado, [10, 20, 30, 40, 50, 60]);
     assert.ok(maxActivos <= 2, `maxActivos=${maxActivos} debería ser <= 2`);
+});
+
+test('librerias: detecta firmas ampliadas (Handlebars, Axios)', () => {
+    const r = analizarLibrerias(ctx({
+        body: '<script src="/handlebars-4.0.0.min.js"></script><script src="/axios-0.18.0.min.js"></script>',
+    }));
+    assert.ok(r.some((f) => f.mensaje.includes('Handlebars')));
+    assert.ok(r.some((f) => f.mensaje.includes('Axios')));
+});
+
+test('activo: detectarReflejo y regla de XSS reflejado', () => {
+    const marcador = 'xZapabcd"\'<>';
+    assert.strictEqual(detectarReflejo(`<p>${marcador}</p>`, marcador), true);
+    assert.strictEqual(detectarReflejo('<p>xZapabcd&quot;&lt;&gt;</p>', marcador), false);
+    const h = analizarActivo(ctx({ active: [{ parametro: 'q', reflejado: true }] }));
+    assert.ok(h.some((f) => f.id === 'xss-reflejado' && f.severidad === 'alta'));
+    assert.strictEqual(analizarActivo(ctx({ active: [{ parametro: 'q', reflejado: false }] })).length, 0);
+});
+
+test('crawl: extrae solo enlaces del mismo origen', () => {
+    const base = new URL('https://sitio.test/a');
+    const dom = parsearHTML(
+        '<a href="/b">b</a><a href="https://sitio.test/c#x">c</a><a href="https://otro.test/d">d</a><a href="mailto:x@y.z">m</a>'
+    );
+    const enlaces = extraerEnlacesMismoOrigen(dom, base);
+    assert.ok(enlaces.includes('https://sitio.test/b'));
+    assert.ok(enlaces.includes('https://sitio.test/c'));
+    assert.ok(!enlaces.some((u) => u.includes('otro.test')));
+    assert.ok(!enlaces.some((u) => u.startsWith('mailto')));
+});
+
+test('reporte HTML: genera documento con hallazgos escapados', () => {
+    const html = aHTML([{ url: 'https://x.test/', hallazgos: [{ severidad: 'alta', categoria: 'xss', mensaje: '<script>', detalle: null }] }]);
+    assert.ok(html.includes('<!doctype html>'));
+    assert.ok(html.includes('&lt;script&gt;')); // el mensaje va escapado
+    assert.ok(html.includes('ALTA'));
 });
 
 test('baseline: diff reporta solo hallazgos nuevos', () => {
