@@ -42,6 +42,7 @@ function esDireccionPrivada(ip) {
 }
 
 // Valida el esquema y resuelve el host para rechazar objetivos internos.
+// Devuelve { url, address, family } con la IP ya validada para fijar la conexión.
 async function validarObjetivo(rawUrl) {
     let url;
     try {
@@ -54,21 +55,33 @@ async function validarObjetivo(rawUrl) {
         throw new Error(`Protocolo no permitido: ${url.protocol} (solo http/https)`);
     }
 
-    const { address } = await dns.lookup(url.hostname);
+    const { address, family } = await dns.lookup(url.hostname);
     if (esDireccionPrivada(address)) {
         throw new Error(`Destino bloqueado por seguridad (dirección interna/privada: ${address})`);
     }
 
-    return url;
+    return { url, address, family };
+}
+
+// Devuelve un `lookup` que siempre resuelve a la IP ya validada. Así la conexión
+// se fija a esa IP y se evita el DNS rebinding (que el host resuelva a otra IP
+// distinta entre la validación y la conexión real).
+function lookupFijo(address, family) {
+    return (hostname, options, callback) => {
+        const cb = typeof options === 'function' ? options : callback;
+        cb(null, address, family || (address.includes(':') ? 6 : 4));
+    };
 }
 
 // --- Descarga del HTML con controles de seguridad --------------------------
-// Devuelve { statusCode, headers, body }.
-function descargar(url, redirecciones = 0) {
+// Recibe { url, address, family } y devuelve { statusCode, headers, body }.
+function descargar(target, redirecciones = 0) {
+    const { url, address, family } = target;
     return new Promise((resolve, reject) => {
         const cliente = url.protocol === 'https:' ? https : http;
 
-        const req = cliente.get(url, { rejectUnauthorized: true }, (resp) => {
+        const opciones = { rejectUnauthorized: true, lookup: lookupFijo(address, family) };
+        const req = cliente.get(url, opciones, (resp) => {
             const { statusCode, headers } = resp;
 
             // Redirecciones controladas (con revalidación anti-SSRF).
@@ -79,7 +92,7 @@ function descargar(url, redirecciones = 0) {
                 }
                 const destino = new URL(headers.location, url);
                 return validarObjetivo(destino.href)
-                    .then((u) => resolve(descargar(u, redirecciones + 1)))
+                    .then((t) => resolve(descargar(t, redirecciones + 1)))
                     .catch(reject);
             }
 
@@ -113,4 +126,4 @@ function descargar(url, redirecciones = 0) {
     });
 }
 
-module.exports = { esDireccionPrivada, validarObjetivo, descargar };
+module.exports = { esDireccionPrivada, validarObjetivo, descargar, lookupFijo };

@@ -18,9 +18,9 @@ function analizar(ctx) {
 
 // Descarga la URL (con controles anti-SSRF) y la analiza.
 async function escanear(entrada) {
-    const url = await validarObjetivo(entrada);
-    const { statusCode, headers, body } = await descargar(url);
-    return analizar({ url, statusCode, headers, body });
+    const target = await validarObjetivo(entrada);
+    const { statusCode, headers, body } = await descargar(target);
+    return analizar({ url: target.url, statusCode, headers, body });
 }
 
 // Código de salida ≠ 0 si hay hallazgos de severidad alta o media (útil en CI).

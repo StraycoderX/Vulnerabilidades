@@ -105,6 +105,7 @@ Uso:
   node index.js --baseline <f> <url>     Reporta solo hallazgos nuevos vs. baseline
   node index.js --baseline <f> --update-baseline <url>
                                          Igual, y actualiza la baseline al terminar
+  node index.js --input urls.txt         Analiza las URLs de un fichero (una por línea)
   node index.js -h | --help              Muestra esta ayuda
 
 Código de salida (modo CLI): 0 sin hallazgos altos/medios, 1 con ellos, 2 si hubo errores.`);
@@ -125,7 +126,14 @@ async function main() {
         else if (a === '--sarif') opciones.sarif = true;
         else if (a === '--update-baseline') opciones.actualizarBaseline = true;
         else if (a === '--baseline') opciones.baseline = args[++i];
-        else urls.push(a);
+        else if (a === '--input') {
+            const fichero = args[++i];
+            const lineas = fs.readFileSync(fichero, 'utf8')
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l && !l.startsWith('#'));
+            urls.push(...lineas);
+        } else urls.push(a);
     }
 
     if (urls.length === 0) {

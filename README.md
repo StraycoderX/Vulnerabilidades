@@ -15,6 +15,7 @@ node index.js <url> [<url>...]           # Analiza una o varias URLs y termina
 node index.js --json <url>               # Salida JSON (para CI)
 node index.js --sarif <url>              # Salida SARIF (GitHub Code Scanning)
 node index.js --baseline base.json <url> # Reporta solo hallazgos NUEVOS vs. baseline
+node index.js --input urls.txt           # Analiza URLs de un fichero (una por línea)
 node index.js --help                     # Ayuda
 npm test                                 # Tests (node --test)
 npm run check                            # Sintaxis + lint + tests
@@ -52,12 +53,16 @@ reporte (`src/report.js`) genera consola, JSON, SARIF y el diff de baseline.
   content*, formularios sin token anti-CSRF aparente y posibles *open redirect*.
 - **Ofuscación:** `eval()`, `eval(atob())`, `new Function(string)`, `unescape()`,
   `String.fromCharCode()` y cadenas con escapes `\xNN`/`\uNNNN` largos.
+- **Librerías JS vulnerables** (estilo retire.js): jQuery, AngularJS, Bootstrap,
+  Lodash y Moment.js con versiones de CVE conocidos.
 
 ## Controles de seguridad de la propia herramienta
 
 - **Anti-SSRF:** resuelve el host y bloquea direcciones internas/privadas
   (loopback, link-local/metadata cloud `169.254.169.254`, rangos RFC 1918,
   IPv6 ULA/link-local e IPv4 embebido en IPv6 `::ffff:`). Solo `http`/`https`.
+- **Anti DNS-rebinding:** la conexión se fija a la IP ya validada, evitando que
+  el host resuelva a otra IP entre la validación y la conexión.
 - **Timeout** de petición (10 s) y **límite de tamaño** de respuesta (5 MB, anti-DoS).
 - **Verificación TLS** explícita y **redirecciones** controladas (máx. 5,
   revalidando anti-SSRF en cada salto).
@@ -74,7 +79,6 @@ reporte (`src/report.js`) genera consola, JSON, SARIF y el diff de baseline.
 ## Próximas mejoras sugeridas
 
 - Parser HTML real (`parse5`/`cheerio`) para reducir falsos positivos.
-- Escaneo por lotes con concurrencia limitada desde un fichero de URLs.
-- Fijar la conexión a la IP ya validada (evitar DNS rebinding).
-- Inspección TLS (versión, caducidad del certificado) y detección de librerías
-  JS con CVE conocido (estilo retire.js).
+- Concurrencia limitada en el escaneo por lotes (`--input`).
+- Inspección TLS (versión de protocolo, caducidad del certificado).
+- Ampliar la base de firmas de librerías vulnerables.

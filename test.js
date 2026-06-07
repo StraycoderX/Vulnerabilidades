@@ -5,10 +5,11 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { URL } = require('url');
 
-const { esDireccionPrivada } = require('./src/net');
+const { esDireccionPrivada, lookupFijo } = require('./src/net');
 const { analizarCabeceras, graduarCSP } = require('./src/rules/headers');
 const { analizarXSS } = require('./src/rules/xss');
 const { analizarOfuscacion } = require('./src/rules/obfuscation');
+const { analizarLibrerias, compararVersiones } = require('./src/rules/libraries');
 const { analizar, exitCodePorHallazgos } = require('./src/engine');
 const { aSARIF, huellasDeReportes, diffContraBaseline } = require('./src/report');
 
@@ -90,6 +91,26 @@ test('SARIF: estructura válida con reglas y resultados', () => {
     assert.ok(Array.isArray(sarif.runs[0].results));
     assert.ok(sarif.runs[0].tool.driver.rules.length > 0);
     assert.ok(['error', 'warning', 'note'].includes(sarif.runs[0].results[0].level));
+});
+
+test('anti-rebinding: lookupFijo siempre devuelve la IP validada', () => {
+    const lookup = lookupFijo('93.184.216.34', 4);
+    let resultado;
+    lookup('cualquier-host.com', {}, (err, address, family) => {
+        resultado = { err, address, family };
+    });
+    assert.strictEqual(resultado.err, null);
+    assert.strictEqual(resultado.address, '93.184.216.34');
+    assert.strictEqual(resultado.family, 4);
+});
+
+test('librerias: detecta versiones vulnerables y compara semver', () => {
+    assert.ok(compararVersiones('3.4.1', '3.5.0') < 0);
+    assert.strictEqual(compararVersiones('3.5.0', '3.5.0'), 0);
+    const vuln = analizarLibrerias(ctx({ body: '<script src="/js/jquery-3.4.1.min.js"></script>' }));
+    assert.ok(vuln.some((f) => f.id === 'libreria-vulnerable' && f.mensaje.includes('jQuery')));
+    const ok = analizarLibrerias(ctx({ body: '<script src="/js/jquery-3.7.1.min.js"></script>' }));
+    assert.strictEqual(ok.length, 0);
 });
 
 test('baseline: diff reporta solo hallazgos nuevos', () => {

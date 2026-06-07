@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Mantiene actualizadas las GitHub Actions usadas en los workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Mantiene actualizadas las dependencias de npm (devDependencies).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
