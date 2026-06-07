@@ -22,6 +22,12 @@ const TIPOS = {
         detalle: 'La respuesta contiene un mensaje de error de base de datos al inyectar comillas.',
         referencia: 'https://owasp.org/www-community/attacks/SQL_Injection',
     },
+    'dom-xss': {
+        id: 'dom-xss', severidad: 'alta', categoria: 'xss',
+        mensaje: (p) => `Posible DOM-XSS en el parámetro "${p}" (ejecutado en el navegador)`,
+        detalle: 'Un payload inyectado se ejecutó en el DOM renderizado (alert capturado).',
+        referencia: 'https://owasp.org/www-community/attacks/DOM_Based_XSS',
+    },
     'open-redirect': {
         id: 'open-redirect-activo', severidad: 'media', categoria: 'redireccion',
         mensaje: (p) => `Posible open redirect en el parámetro "${p}"`,

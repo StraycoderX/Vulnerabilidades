@@ -9,6 +9,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const http = require('http');
 const { escanear, escanearDetallado } = require('./src/engine');
+const { escanearHeadless } = require('./src/headless');
 const { rastrear } = require('./src/crawl');
 const { validarObjetivo, descargar } = require('./src/net');
 
@@ -99,6 +100,35 @@ test('integración: modo activo detecta SSTI y SQLi', async () => {
 test('integración: modo activo detecta open redirect', async () => {
     const { reporte } = await escanearDetallado(`${base}/redir?next=/`, { active: true, authorized: true });
     assert.ok(reporte.hallazgos.some((f) => f.id === 'open-redirect-activo'));
+});
+
+test('integración: orquestación headless (Playwright simulado)', async () => {
+    // Playwright falso que emite una violación de CSP y devuelve un DOM con un
+    // manejador inline, para verificar el cableado y el análisis del DOM renderizado.
+    const handlers = {};
+    const page = {
+        on: (ev, cb) => ((handlers[ev] = handlers[ev] || []).push(cb)),
+        goto: async () => {
+            (handlers.console || []).forEach((cb) =>
+                cb({ text: () => 'Refused to execute inline script: Content Security Policy' })
+            );
+            return { status: () => 200, headers: () => ({}) };
+        },
+        content: async () => '<html><body><img src=x onerror="roba()"></body></html>',
+    };
+    const playwrightFalso = {
+        chromium: {
+            launch: async () => ({
+                newContext: async () => ({ newPage: async () => page }),
+                close: async () => {},
+            }),
+        },
+    };
+
+    const { reporte } = await escanearHeadless(`${base}/`, {}, { playwright: playwrightFalso });
+    const ids = reporte.hallazgos.map((f) => f.id);
+    assert.ok(ids.includes('csp-violacion-runtime'), 'CSP runtime');
+    assert.ok(ids.includes('evento-inline'), 'analiza el DOM renderizado');
 });
 
 test('integración: escaneo autenticado envía cabeceras y cookie', async () => {

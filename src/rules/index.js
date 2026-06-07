@@ -8,6 +8,7 @@ const { analizarOfuscacion } = require('./obfuscation');
 const { analizarLibrerias } = require('./libraries');
 const { analizarTLS } = require('./tls');
 const { analizarActivo } = require('./active');
+const { analizarHeadless } = require('./headless');
 
 const reglas = [
     analizarCabeceras,
@@ -16,6 +17,7 @@ const reglas = [
     analizarLibrerias,
     analizarTLS,
     analizarActivo,
+    analizarHeadless,
 ];
 
 module.exports = { reglas };

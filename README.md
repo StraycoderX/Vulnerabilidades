@@ -69,8 +69,10 @@ sonda de XSS reflejado.
   certificado caducado o próximo a caducar.
 - **Comprobaciones activas** (con `--active --authorized`, por parámetro de query):
   **XSS reflejado** (marcador inofensivo reflejado sin escapar), **SSTI** (expresión
-  aritmética evaluada por la plantilla), **SQLi error-based** (firmas de error de BD)
-  y **open redirect** (redirección a dominio externo).
+  aritmética evaluada por la plantilla), **SQLi error-based** (firmas de error de BD),
+  **open redirect** (redirección a dominio externo) y **DOM-XSS** (en modo headless).
+- **Modo headless / DAST** (`--headless`): renderiza la página con un navegador real,
+  por lo que analiza **SPAs**, detecta **violaciones de CSP en runtime** y errores JS.
 
 ## Crawling y escaneo autenticado
 
@@ -81,6 +83,20 @@ sonda de XSS reflejado.
 
 > ⚠️ El modo activo envía peticiones de prueba; úsalo **solo** sobre objetivos
 > propios o con autorización explícita (`--authorized` es obligatorio).
+
+## Modo headless (DAST) — dependencia opcional
+
+`--headless` usa Playwright para renderizar la página. Es una **dependencia
+opcional**: el resto de la herramienta funciona sin ella. Para habilitarlo:
+
+```bash
+npm install -D playwright
+npx playwright install chromium
+node index.js --headless https://tu-sitio.example/
+```
+
+Sin Playwright instalado, `--headless` muestra un mensaje con estas instrucciones
+y no afecta a los demás modos.
 
 ## Controles de seguridad de la propia herramienta
 
@@ -123,4 +139,4 @@ Como Action reutilizable en un workflow:
 
 - Mantener al día la base de firmas de librerías vulnerables.
 - Respetar `robots.txt` y añadir rate-limiting cortés al crawler.
-- Más comprobaciones activas (open redirect, inyección) bajo autorización.
+- Publicar en npm y como imagen en un registry de contenedores.

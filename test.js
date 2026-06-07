@@ -12,6 +12,7 @@ const { analizarOfuscacion } = require('./src/rules/obfuscation');
 const { analizarLibrerias, compararVersiones } = require('./src/rules/libraries');
 const { analizarTLS } = require('./src/rules/tls');
 const { analizarActivo } = require('./src/rules/active');
+const { analizarHeadless } = require('./src/rules/headless');
 const { parsearHTML, parsearAtributos } = require('./src/parser');
 const { mapearConcurrencia } = require('./src/pool');
 const { detectarReflejo, detectarErrorSQL } = require('./src/active');
@@ -203,6 +204,16 @@ test('activo: la regla mapea cada tipo de sonda a su hallazgo', () => {
     assert.ok(ids.includes('ssti'));
     assert.ok(ids.includes('sqli-error'));
     assert.ok(!ids.includes('open-redirect-activo')); // detectado:false no genera hallazgo
+});
+
+test('headless: regla de CSP runtime y mapeo de DOM-XSS', () => {
+    const h = analizarHeadless(ctx({ headless: { violacionesCSP: ['Refused ... Content Security Policy'], erroresJS: [] } }));
+    assert.ok(h.some((f) => f.id === 'csp-violacion-runtime'));
+    // sin datos headless no produce hallazgos
+    assert.strictEqual(analizarHeadless(ctx({})).length, 0);
+    // el tipo dom-xss se mapea vía la regla activa
+    const d = analizarActivo(ctx({ active: [{ tipo: 'dom-xss', parametro: 'q', detectado: true }] }));
+    assert.ok(d.some((f) => f.id === 'dom-xss' && f.severidad === 'alta'));
 });
 
 test('crawl: extrae solo enlaces del mismo origen', () => {

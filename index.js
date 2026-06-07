@@ -3,6 +3,7 @@
 const readline = require('readline');
 const fs = require('fs');
 const { escanear, exitCodePorHallazgos } = require('./src/engine');
+const { escanearHeadless } = require('./src/headless');
 const { rastrear } = require('./src/crawl');
 const { mapearConcurrencia } = require('./src/pool');
 const {
@@ -63,14 +64,25 @@ async function modoCLI(urls, opciones) {
         }
     } else {
         // Escaneo concurrente con límite, preservando el orden de las URLs.
-        reportes = await mapearConcurrencia(urls, opciones.concurrencia, async (u) => {
+        const escanearUrl = async (u) => {
             try {
+                if (opciones.headless) {
+                    const r = await escanearHeadless(u, opciones);
+                    if (r.error) {
+                        salida = 2;
+                        return { url: u, error: r.error };
+                    }
+                    return r.reporte;
+                }
                 return await escanear(u, opciones);
             } catch (err) {
                 salida = 2;
                 return { url: u, error: err.message };
             }
-        });
+        };
+        // El navegador headless es pesado: limita más la concurrencia.
+        const limite = opciones.headless ? Math.min(opciones.concurrencia, 2) : opciones.concurrencia;
+        reportes = await mapearConcurrencia(urls, limite, escanearUrl);
     }
 
     // Baseline / diff: reportar solo hallazgos nuevos frente al escaneo previo.
@@ -129,6 +141,8 @@ Uso:
   node index.js --html <url>             Salida como reporte HTML
   node index.js --crawl N [--max-pages M] <url>
                                          Rastrea el mismo origen hasta profundidad N
+  node index.js --headless <url>         Renderiza con navegador (DAST: SPA, DOM-XSS, CSP runtime)
+                                         Requiere: npm i -D playwright && npx playwright install chromium
   node index.js --header "K: V" <url>    Cabecera personalizada (repetible)
   node index.js --cookie "k=v" <url>     Cookie de sesión (escaneo autenticado)
   node index.js --active --authorized <url?param=x>
@@ -149,7 +163,7 @@ async function main() {
         json: false, sarif: false, html: false,
         baseline: null, actualizarBaseline: false,
         concurrencia: 5, crawl: 0, maxPaginas: 20,
-        active: false, authorized: false,
+        headless: false, active: false, authorized: false,
         headers: {}, cookie: null,
     };
     const urls = [];
@@ -163,6 +177,7 @@ async function main() {
         else if (a === '--concurrency') opciones.concurrencia = Math.max(1, Number(args[++i]) || 5);
         else if (a === '--crawl') opciones.crawl = Math.max(0, Number(args[++i]) || 0);
         else if (a === '--max-pages') opciones.maxPaginas = Math.max(1, Number(args[++i]) || 20);
+        else if (a === '--headless') opciones.headless = true;
         else if (a === '--active') opciones.active = true;
         else if (a === '--authorized') opciones.authorized = true;
         else if (a === '--cookie') opciones.cookie = args[++i];
