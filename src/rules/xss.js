@@ -1,16 +1,19 @@
 'use strict';
 
 const { hallazgo, muestra } = require('./util');
+const { parsearHTML } = require('../parser');
 
 const REF_XSS = 'https://owasp.org/www-community/attacks/xss/';
 
-// Vectores de XSS y problemas de contenido en el HTML (heurística por regex;
-// un parser daría más precisión, pendiente en el roadmap).
+// Vectores de XSS y problemas de contenido, usando el HTML ya tokenizado para
+// inspeccionar etiquetas y atributos con más precisión que una regex suelta.
 function analizarXSS(ctx) {
     const html = ctx.body;
+    const dom = ctx.dom || parsearHTML(html || '');
     const hallazgos = [];
+    const esHttps = ctx.url.protocol === 'https:';
 
-    const scripts = html.match(/<\s*script\b[^>]*>/gi) || [];
+    const scripts = dom.elementos.filter((e) => e.tag === 'script');
     if (scripts.length) {
         hallazgos.push(hallazgo({
             id: 'script-presente', severidad: 'info', categoria: 'xss',
@@ -19,7 +22,22 @@ function analizarXSS(ctx) {
         }));
     }
 
-    const handlers = html.match(/\son[a-z]+\s*=\s*["'][^"']*["']/gi) || [];
+    // Manejadores de evento inline (atributos on*).
+    const handlers = [];
+    const jsUris = [];
+    const mixed = [];
+    for (const el of dom.elementos) {
+        for (const [nombre, valor] of Object.entries(el.attrs)) {
+            if (/^on[a-z]+$/.test(nombre) && valor) handlers.push(`<${el.tag} ${nombre}="${valor}">`);
+            if ((nombre === 'href' || nombre === 'src') && /^\s*javascript:/i.test(valor)) {
+                jsUris.push(`<${el.tag} ${nombre}="${valor}">`);
+            }
+            if (esHttps && (nombre === 'src' || nombre === 'href') && /^http:\/\//i.test(valor)) {
+                mixed.push(`<${el.tag} ${nombre}="${valor}">`);
+            }
+        }
+    }
+
     if (handlers.length) {
         hallazgos.push(hallazgo({
             id: 'evento-inline', severidad: 'media', categoria: 'xss',
@@ -27,16 +45,31 @@ function analizarXSS(ctx) {
             detalle: muestra(handlers), referencia: REF_XSS,
         }));
     }
-
-    const jsUris = html.match(/(?:href|src)\s*=\s*["']\s*javascript:[^"']*["']/gi) || [];
     if (jsUris.length) {
         hallazgos.push(hallazgo({
             id: 'javascript-uri', severidad: 'media', categoria: 'xss',
             mensaje: `${jsUris.length} URI javascript: detectada(s)`, detalle: muestra(jsUris), referencia: REF_XSS,
         }));
     }
+    if (mixed.length) {
+        hallazgos.push(hallazgo({
+            id: 'mixed-content', severidad: 'media', categoria: 'contenido',
+            mensaje: `${mixed.length} recurso(s) cargados por HTTP en página HTTPS (mixed content)`,
+            detalle: muestra(mixed),
+        }));
+    }
 
-    const domSinks = html.match(/\b(innerHTML|outerHTML|document\.write|insertAdjacentHTML)\b/gi) || [];
+    const frames = dom.elementos.filter((e) => ['iframe', 'object', 'embed'].includes(e.tag));
+    if (frames.length) {
+        hallazgos.push(hallazgo({
+            id: 'marco-embebido', severidad: 'baja', categoria: 'contenido',
+            mensaje: `${frames.length} marco(s) embebido(s) (iframe/object/embed)`,
+        }));
+    }
+
+    // Sumideros DOM peligrosos: se buscan en el contenido de los scripts.
+    const codigoJS = scripts.map((s) => s.contenido).join('\n');
+    const domSinks = codigoJS.match(/\b(innerHTML|outerHTML|document\.write|insertAdjacentHTML)\b/gi) || [];
     if (domSinks.length) {
         hallazgos.push(hallazgo({
             id: 'dom-sink', severidad: 'baja', categoria: 'xss',
@@ -45,26 +78,8 @@ function analizarXSS(ctx) {
         }));
     }
 
-    const frames = html.match(/<\s*(iframe|object|embed)\b[^>]*>/gi) || [];
-    if (frames.length) {
-        hallazgos.push(hallazgo({
-            id: 'marco-embebido', severidad: 'baja', categoria: 'contenido',
-            mensaje: `${frames.length} marco(s) embebido(s) (iframe/object/embed)`,
-        }));
-    }
-
-    if (ctx.url.protocol === 'https:') {
-        const mixed = html.match(/(?:src|href)\s*=\s*["']http:\/\/[^"']+["']/gi) || [];
-        if (mixed.length) {
-            hallazgos.push(hallazgo({
-                id: 'mixed-content', severidad: 'media', categoria: 'contenido',
-                mensaje: `${mixed.length} recurso(s) cargados por HTTP en página HTTPS (mixed content)`,
-                detalle: muestra(mixed),
-            }));
-        }
-    }
-
-    const forms = html.match(/<\s*form\b[^>]*>[\s\S]*?<\s*\/\s*form\s*>/gi) || [];
+    // Formularios sin token anti-CSRF (heurística sobre el HTML crudo por la anidación).
+    const forms = (html || '').match(/<\s*form\b[^>]*>[\s\S]*?<\s*\/\s*form\s*>/gi) || [];
     const sinToken = forms.filter((f) => !/csrf|token|authenticity|_token|nonce/i.test(f));
     if (sinToken.length) {
         hallazgos.push(hallazgo({
@@ -74,8 +89,8 @@ function analizarXSS(ctx) {
         }));
     }
 
-    // Posible open redirect: enlaces con parámetros de redirección hacia URL absoluta.
-    const redirects = html.match(/[?&](?:url|next|redirect|return|dest|destination)=https?%3a/gi) || [];
+    // Posible open redirect.
+    const redirects = (html || '').match(/[?&](?:url|next|redirect|return|dest|destination)=https?%3a/gi) || [];
     if (redirects.length) {
         hallazgos.push(hallazgo({
             id: 'open-redirect', severidad: 'info', categoria: 'redireccion',

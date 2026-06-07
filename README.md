@@ -16,6 +16,7 @@ node index.js --json <url>               # Salida JSON (para CI)
 node index.js --sarif <url>              # Salida SARIF (GitHub Code Scanning)
 node index.js --baseline base.json <url> # Reporta solo hallazgos NUEVOS vs. baseline
 node index.js --input urls.txt           # Analiza URLs de un fichero (una por línea)
+node index.js --concurrency N <urls>     # Escaneos en paralelo (por defecto 5)
 node index.js --help                     # Ayuda
 npm test                                 # Tests (node --test)
 npm run check                            # Sintaxis + lint + tests
@@ -35,8 +36,10 @@ ellos · `2` si hubo errores. Útil para fallar un pipeline de CI.
 El código está modularizado en `src/` con una **arquitectura de reglas**: cada
 comprobación vive en `src/rules/` y emite hallazgos con `id` estable, severidad,
 categoría y referencia. Añadir una regla nueva es crear un módulo y registrarlo
-en `src/rules/index.js`. El motor (`src/engine.js`) las ejecuta y ordena; el
-reporte (`src/report.js`) genera consola, JSON, SARIF y el diff de baseline.
+en `src/rules/index.js`. El motor (`src/engine.js`) tokeniza el HTML con un
+**parser propio** (`src/parser.js`, sin dependencias), ejecuta las reglas y
+ordena; el reporte (`src/report.js`) genera consola, JSON, SARIF y diff de
+baseline; `src/pool.js` da la concurrencia y `src/tls.js` la inspección TLS.
 
 ## Qué analiza
 
@@ -55,6 +58,8 @@ reporte (`src/report.js`) genera consola, JSON, SARIF y el diff de baseline.
   `String.fromCharCode()` y cadenas con escapes `\xNN`/`\uNNNN` largos.
 - **Librerías JS vulnerables** (estilo retire.js): jQuery, AngularJS, Bootstrap,
   Lodash y Moment.js con versiones de CVE conocidos.
+- **TLS** (en sitios `https`): protocolo obsoleto (TLS 1.0/1.1, SSLv3 → alta) y
+  certificado caducado o próximo a caducar.
 
 ## Controles de seguridad de la propia herramienta
 
@@ -78,7 +83,6 @@ reporte (`src/report.js`) genera consola, JSON, SARIF y el diff de baseline.
 
 ## Próximas mejoras sugeridas
 
-- Parser HTML real (`parse5`/`cheerio`) para reducir falsos positivos.
-- Concurrencia limitada en el escaneo por lotes (`--input`).
-- Inspección TLS (versión de protocolo, caducidad del certificado).
 - Ampliar la base de firmas de librerías vulnerables.
+- Escaneo autenticado (cookies/headers de sesión) y crawling con profundidad.
+- Reporte HTML y modo activo (con autorización) para XSS reflejado.

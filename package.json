@@ -1,7 +1,7 @@
 {
   "name": "analizador-vulnerabilidades-web",
-  "version": "2.0.0",
-  "description": "Analizador de seguridad web (arquitectura de reglas): cabeceras y CSP graduada, CORS, vectores XSS y ofuscación, con salida SARIF y modo baseline/diff. Anti-SSRF, timeout y límite de tamaño. Sin dependencias.",
+  "version": "2.1.0",
+  "description": "Analizador de seguridad web (arquitectura de reglas, parser HTML propio): cabeceras y CSP graduada, CORS, XSS, ofuscación, librerías vulnerables e inspección TLS. Salida SARIF, baseline/diff y escaneo concurrente. Anti-SSRF/rebinding. Sin dependencias de ejecución.",
   "main": "index.js",
   "bin": {
     "analizador-vuln": "index.js"

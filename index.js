@@ -3,6 +3,7 @@
 const readline = require('readline');
 const fs = require('fs');
 const { escanear, exitCodePorHallazgos } = require('./src/engine');
+const { mapearConcurrencia } = require('./src/pool');
 const {
     imprimirReporte,
     huellasDeReportes,
@@ -44,17 +45,16 @@ async function modoInteractivo() {
 
 // --- Modo CLI no interactivo ----------------------------------------------
 async function modoCLI(urls, opciones) {
-    const reportes = [];
     let salida = 0;
-    for (const u of urls) {
+    // Escaneo concurrente con límite, preservando el orden de las URLs.
+    const reportes = await mapearConcurrencia(urls, opciones.concurrencia, async (u) => {
         try {
-            const reporte = await escanear(u);
-            reportes.push(reporte);
+            return await escanear(u);
         } catch (err) {
-            reportes.push({ url: u, error: err.message });
-            salida = Math.max(salida, 2);
+            salida = 2;
+            return { url: u, error: err.message };
         }
-    }
+    });
 
     // Baseline / diff: reportar solo hallazgos nuevos frente al escaneo previo.
     let aMostrar = reportes;
@@ -106,6 +106,7 @@ Uso:
   node index.js --baseline <f> --update-baseline <url>
                                          Igual, y actualiza la baseline al terminar
   node index.js --input urls.txt         Analiza las URLs de un fichero (una por línea)
+  node index.js --concurrency N <urls>   Nº de escaneos en paralelo (por defecto 5)
   node index.js -h | --help              Muestra esta ayuda
 
 Código de salida (modo CLI): 0 sin hallazgos altos/medios, 1 con ellos, 2 si hubo errores.`);
@@ -118,7 +119,7 @@ async function main() {
         return;
     }
 
-    const opciones = { json: false, sarif: false, baseline: null, actualizarBaseline: false };
+    const opciones = { json: false, sarif: false, baseline: null, actualizarBaseline: false, concurrencia: 5 };
     const urls = [];
     for (let i = 0; i < args.length; i++) {
         const a = args[i];
@@ -126,6 +127,7 @@ async function main() {
         else if (a === '--sarif') opciones.sarif = true;
         else if (a === '--update-baseline') opciones.actualizarBaseline = true;
         else if (a === '--baseline') opciones.baseline = args[++i];
+        else if (a === '--concurrency') opciones.concurrencia = Math.max(1, Number(args[++i]) || 5);
         else if (a === '--input') {
             const fichero = args[++i];
             const lineas = fs.readFileSync(fichero, 'utf8')

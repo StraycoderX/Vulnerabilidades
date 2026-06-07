@@ -10,6 +10,9 @@ const { analizarCabeceras, graduarCSP } = require('./src/rules/headers');
 const { analizarXSS } = require('./src/rules/xss');
 const { analizarOfuscacion } = require('./src/rules/obfuscation');
 const { analizarLibrerias, compararVersiones } = require('./src/rules/libraries');
+const { analizarTLS } = require('./src/rules/tls');
+const { parsearHTML, parsearAtributos } = require('./src/parser');
+const { mapearConcurrencia } = require('./src/pool');
 const { analizar, exitCodePorHallazgos } = require('./src/engine');
 const { aSARIF, huellasDeReportes, diffContraBaseline } = require('./src/report');
 
@@ -111,6 +114,60 @@ test('librerias: detecta versiones vulnerables y compara semver', () => {
     assert.ok(vuln.some((f) => f.id === 'libreria-vulnerable' && f.mensaje.includes('jQuery')));
     const ok = analizarLibrerias(ctx({ body: '<script src="/js/jquery-3.7.1.min.js"></script>' }));
     assert.strictEqual(ok.length, 0);
+});
+
+test('parser: tokeniza etiquetas, atributos y contenido de script', () => {
+    const { elementos } = parsearHTML(
+        `<!-- c --><div class="x" data-y='z'></div><img src=a onerror="alert(1)"><script src="lib.js">var a=1;</script>`
+    );
+    const tags = elementos.map((e) => e.tag);
+    assert.deepStrictEqual(tags, ['div', 'img', 'script']);
+    assert.strictEqual(elementos[0].attrs.class, 'x');
+    assert.strictEqual(elementos[0].attrs['data-y'], 'z');
+    assert.strictEqual(elementos[1].attrs.onerror, 'alert(1)');
+    assert.strictEqual(elementos[2].attrs.src, 'lib.js');
+    assert.strictEqual(elementos[2].contenido, 'var a=1;');
+});
+
+test("parser: no confunde '>' dentro de atributos entrecomillados", () => {
+    const { elementos } = parsearHTML(`<a title="1 > 0" href="x">`);
+    assert.strictEqual(elementos.length, 1);
+    assert.strictEqual(elementos[0].attrs.title, '1 > 0');
+    assert.strictEqual(elementos[0].attrs.href, 'x');
+});
+
+test('parser: atributos sin valor', () => {
+    const attrs = parsearAtributos('disabled checked type=text');
+    assert.strictEqual(attrs.disabled, '');
+    assert.strictEqual(attrs.type, 'text');
+});
+
+test('tls: protocolo obsoleto y certificado caducado son severidad alta', () => {
+    const obsoleto = analizarTLS(ctx({ tls: { protocol: 'TLSv1', validTo: null, error: null } }));
+    assert.ok(obsoleto.some((f) => f.id === 'tls-protocolo-obsoleto' && f.severidad === 'alta'));
+
+    const ayer = new Date(Date.now() - 86400000).toUTCString();
+    const caducado = analizarTLS(ctx({ tls: { protocol: 'TLSv1.3', validTo: ayer, error: null } }));
+    assert.ok(caducado.some((f) => f.id === 'tls-cert-caducado' && f.severidad === 'alta'));
+
+    const sano = analizarTLS(ctx({ tls: { protocol: 'TLSv1.3', validTo: new Date(Date.now() + 100 * 86400000).toUTCString(), error: null } }));
+    assert.strictEqual(sano.length, 0);
+
+    assert.strictEqual(analizarTLS(ctx({ tls: { error: 'timeout' } })).length, 0);
+});
+
+test('pool: respeta el límite de concurrencia y conserva el orden', async () => {
+    let activos = 0;
+    let maxActivos = 0;
+    const resultado = await mapearConcurrencia([1, 2, 3, 4, 5, 6], 2, async (x) => {
+        activos++;
+        maxActivos = Math.max(maxActivos, activos);
+        await new Promise((r) => setTimeout(r, 5));
+        activos--;
+        return x * 10;
+    });
+    assert.deepStrictEqual(resultado, [10, 20, 30, 40, 50, 60]);
+    assert.ok(maxActivos <= 2, `maxActivos=${maxActivos} debería ser <= 2`);
 });
 
 test('baseline: diff reporta solo hallazgos nuevos', () => {

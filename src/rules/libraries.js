@@ -1,6 +1,7 @@
 'use strict';
 
 const { hallazgo } = require('./util');
+const { parsearHTML } = require('../parser');
 
 // Mini base de firmas estilo retire.js: detecta versiones de librerías JS con
 // vulnerabilidades conocidas. Ampliable añadiendo entradas a esta lista.
@@ -24,15 +25,19 @@ function compararVersiones(a, b) {
 }
 
 function analizarLibrerias(ctx) {
-    const html = ctx.body;
+    const dom = ctx.dom || parsearHTML(ctx.body || '');
     const hallazgos = [];
     const vistas = new Set();
 
-    for (const firma of FIRMAS) {
-        // `regex` no es global: lo aplicamos sobre cada coincidencia de src.
-        const re = new RegExp(firma.regex, 'gi');
-        let m;
-        while ((m = re.exec(html)) !== null) {
+    // Inspecciona el src de cada <script> en lugar de todo el HTML crudo.
+    const fuentes = dom.elementos
+        .filter((e) => e.tag === 'script' && e.attrs.src)
+        .map((e) => e.attrs.src);
+
+    for (const src of fuentes) {
+        for (const firma of FIRMAS) {
+            const m = src.match(firma.regex);
+            if (!m) continue;
             const version = m[1];
             const clave = `${firma.nombre}@${version}`;
             if (vistas.has(clave)) continue;
