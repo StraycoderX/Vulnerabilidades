@@ -1,0 +1,35 @@
+name: CI
+
+# Se ejecuta en cada update del repositorio (push y pull request) para
+# verificar que no haya fallas estructurales: sintaxis, lint y tests.
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: Estructura (sintaxis + lint + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Comprobar sintaxis
+        run: node --check index.js
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Auditoría de dependencias
+        run: npm audit --audit-level=high
+        continue-on-error: true
