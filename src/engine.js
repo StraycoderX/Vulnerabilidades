@@ -5,7 +5,7 @@ const { reglas } = require('./rules');
 const { validarObjetivo, descargar } = require('./net');
 const { parsearHTML } = require('./parser');
 const { inspeccionarTLS } = require('./tls');
-const { probarXSSReflejado } = require('./active');
+const { ejecutarSondasActivas } = require('./active');
 
 // Ejecuta todas las reglas sobre el contexto y devuelve el reporte ordenado.
 function analizar(ctx) {
@@ -36,10 +36,11 @@ async function escanearDetallado(entrada, opciones = {}) {
 
     const tlsInfo = target.url.protocol === 'https:' ? await inspeccionarTLS(target).catch(() => null) : null;
 
-    // Modo activo (XSS reflejado): solo con autorización explícita.
+    // Sondas activas (XSS reflejado, SSTI, SQLi, open redirect): solo con
+    // autorización explícita.
     let active = null;
     if (opciones.active && opciones.authorized) {
-        active = await probarXSSReflejado(target, extra).catch(() => null);
+        active = await ejecutarSondasActivas(target, extra).catch(() => null);
     }
 
     const dom = parsearHTML(body || '');

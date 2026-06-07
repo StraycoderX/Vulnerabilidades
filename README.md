@@ -67,8 +67,10 @@ sonda de XSS reflejado.
   Lodash y Moment.js con versiones de CVE conocidos.
 - **TLS** (en sitios `https`): protocolo obsoleto (TLS 1.0/1.1, SSLv3 → alta) y
   certificado caducado o próximo a caducar.
-- **XSS reflejado (modo activo)**: con `--active --authorized`, inyecta un marcador
-  inofensivo en cada parámetro de query y reporta si se refleja sin escapar.
+- **Comprobaciones activas** (con `--active --authorized`, por parámetro de query):
+  **XSS reflejado** (marcador inofensivo reflejado sin escapar), **SSTI** (expresión
+  aritmética evaluada por la plantilla), **SQLi error-based** (firmas de error de BD)
+  y **open redirect** (redirección a dominio externo).
 
 ## Crawling y escaneo autenticado
 

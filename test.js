@@ -14,7 +14,7 @@ const { analizarTLS } = require('./src/rules/tls');
 const { analizarActivo } = require('./src/rules/active');
 const { parsearHTML, parsearAtributos } = require('./src/parser');
 const { mapearConcurrencia } = require('./src/pool');
-const { detectarReflejo } = require('./src/active');
+const { detectarReflejo, detectarErrorSQL } = require('./src/active');
 const { extraerEnlacesMismoOrigen } = require('./src/crawl');
 const { analizar, exitCodePorHallazgos } = require('./src/engine');
 const { aSARIF, huellasDeReportes, diffContraBaseline, aHTML } = require('./src/report');
@@ -181,13 +181,28 @@ test('librerias: detecta firmas ampliadas (Handlebars, Axios)', () => {
     assert.ok(r.some((f) => f.mensaje.includes('Axios')));
 });
 
-test('activo: detectarReflejo y regla de XSS reflejado', () => {
+test('activo: detección de reflejo y de error SQL', () => {
     const marcador = 'xZapabcd"\'<>';
     assert.strictEqual(detectarReflejo(`<p>${marcador}</p>`, marcador), true);
     assert.strictEqual(detectarReflejo('<p>xZapabcd&quot;&lt;&gt;</p>', marcador), false);
-    const h = analizarActivo(ctx({ active: [{ parametro: 'q', reflejado: true }] }));
-    assert.ok(h.some((f) => f.id === 'xss-reflejado' && f.severidad === 'alta'));
-    assert.strictEqual(analizarActivo(ctx({ active: [{ parametro: 'q', reflejado: false }] })).length, 0);
+    assert.strictEqual(detectarErrorSQL('... You have an error in your SQL syntax; check the MySQL ...'), true);
+    assert.strictEqual(detectarErrorSQL('pagina normal sin errores'), false);
+});
+
+test('activo: la regla mapea cada tipo de sonda a su hallazgo', () => {
+    const h = analizarActivo(ctx({
+        active: [
+            { tipo: 'xss', parametro: 'q', detectado: true },
+            { tipo: 'ssti', parametro: 'name', detectado: true },
+            { tipo: 'sqli', parametro: 'id', detectado: true },
+            { tipo: 'open-redirect', parametro: 'next', detectado: false },
+        ],
+    }));
+    const ids = h.map((f) => f.id);
+    assert.ok(ids.includes('xss-reflejado'));
+    assert.ok(ids.includes('ssti'));
+    assert.ok(ids.includes('sqli-error'));
+    assert.ok(!ids.includes('open-redirect-activo')); // detectado:false no genera hallazgo
 });
 
 test('crawl: extrae solo enlaces del mismo origen', () => {

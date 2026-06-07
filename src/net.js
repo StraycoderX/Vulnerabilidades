@@ -99,6 +99,11 @@ function descargar(target, extra = {}, redirecciones = 0) {
             // Redirecciones controladas (con revalidación anti-SSRF).
             if (statusCode >= 300 && statusCode < 400 && headers.location) {
                 resp.resume(); // descarta el cuerpo
+                // Modo no-seguir: devuelve la redirección para inspeccionarla
+                // (se usa en la detección activa de open redirect).
+                if (extra.noFollow) {
+                    return resolve({ statusCode, headers, body: '' });
+                }
                 if (redirecciones >= MAX_REDIRECTS) {
                     return reject(new Error('Demasiadas redirecciones'));
                 }

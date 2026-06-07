@@ -32,6 +32,23 @@ test.before(async () => {
             return;
         }
 
+        // Open redirect: redirige al valor del parámetro `next` sin validar.
+        if (url.pathname === '/redir') {
+            res.writeHead(302, { Location: url.searchParams.get('next') || '/' });
+            res.end();
+            return;
+        }
+
+        // Vulnerable a SQLi (error-based) y SSTI según el contenido de `q`.
+        if (url.pathname === '/buscar') {
+            let salida = q;
+            if (q.includes("'")) salida += ' — You have an error in your SQL syntax near MySQL';
+            if (q.includes('{{73*137}}')) salida = salida.replace('{{73*137}}', '10001');
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(`<html><body>res: ${salida}</body></html>`);
+            return;
+        }
+
         // Página principal: insegura a propósito y refleja `q` sin escapar.
         res.writeHead(200, {
             'Content-Type': 'text/html',
@@ -70,6 +87,18 @@ test('integración: crawl sigue solo el mismo origen', async () => {
 test('integración: modo activo detecta XSS reflejado', async () => {
     const { reporte } = await escanearDetallado(`${base}/?q=hola`, { active: true, authorized: true });
     assert.ok(reporte.hallazgos.some((f) => f.id === 'xss-reflejado'));
+});
+
+test('integración: modo activo detecta SSTI y SQLi', async () => {
+    const { reporte } = await escanearDetallado(`${base}/buscar?q=hola`, { active: true, authorized: true });
+    const ids = reporte.hallazgos.map((f) => f.id);
+    assert.ok(ids.includes('ssti'), 'debería detectar SSTI');
+    assert.ok(ids.includes('sqli-error'), 'debería detectar SQLi');
+});
+
+test('integración: modo activo detecta open redirect', async () => {
+    const { reporte } = await escanearDetallado(`${base}/redir?next=/`, { active: true, authorized: true });
+    assert.ok(reporte.hallazgos.some((f) => f.id === 'open-redirect-activo'));
 });
 
 test('integración: escaneo autenticado envía cabeceras y cookie', async () => {
