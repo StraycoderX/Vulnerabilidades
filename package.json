@@ -1,0 +1,10 @@
+{
+  "name": "analizador-vulnerabilidades-web",
+  "version": "1.0.0",
+  "description": "Analizador interactivo de páginas web que localiza etiquetas <script> a revisar, con controles de seguridad (anti-SSRF, timeout y límite de tamaño).",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "license": "MIT"
+}
