@@ -10,26 +10,46 @@ seguridad, vectores de XSS y patrones de código ofuscado.
 ## Uso
 
 ```bash
-node index.js                     # Modo interactivo (pregunta URLs)
-node index.js <url> [<url>...]    # Analiza una o varias URLs y termina
-node index.js --json <url>        # Salida en formato JSON (para CI)
-node index.js --help             # Ayuda
-npm test                          # Ejecuta los tests (node --test)
+node index.js                            # Modo interactivo (pregunta URLs)
+node index.js <url> [<url>...]           # Analiza una o varias URLs y termina
+node index.js --json <url>               # Salida JSON (para CI)
+node index.js --sarif <url>              # Salida SARIF (GitHub Code Scanning)
+node index.js --baseline base.json <url> # Reporta solo hallazgos NUEVOS vs. baseline
+node index.js --help                     # Ayuda
+npm test                                 # Tests (node --test)
+npm run check                            # Sintaxis + lint + tests
 ```
+
+La primera ejecución con `--baseline` crea el fichero; las siguientes solo
+muestran hallazgos nuevos (ideal para detectar regresiones en cada update).
+Añade `--update-baseline` para refrescar la línea base tras el escaneo.
 
 En modo interactivo, escribe `salir` (o pulsa Ctrl+C) para terminar.
 
 **Código de salida (modo CLI):** `0` sin hallazgos altos/medios · `1` con
 ellos · `2` si hubo errores. Útil para fallar un pipeline de CI.
 
+## Arquitectura
+
+El código está modularizado en `src/` con una **arquitectura de reglas**: cada
+comprobación vive en `src/rules/` y emite hallazgos con `id` estable, severidad,
+categoría y referencia. Añadir una regla nueva es crear un módulo y registrarlo
+en `src/rules/index.js`. El motor (`src/engine.js`) las ejecuta y ordena; el
+reporte (`src/report.js`) genera consola, JSON, SARIF y el diff de baseline.
+
 ## Qué analiza
 
-- **Cabeceras de seguridad:** CSP, HSTS, X-Frame-Options / `frame-ancestors`,
-  X-Content-Type-Options, Referrer-Policy, Permissions-Policy, exposición de
-  tecnología (`Server`/`X-Powered-By`) y cookies sin `Secure`/`HttpOnly`/`SameSite`.
+- **Cabeceras de seguridad:** CSP (incluida su **graduación**: `unsafe-inline`,
+  `unsafe-eval`, comodines, falta de `object-src`/`base-uri`), HSTS,
+  X-Frame-Options / `frame-ancestors`, X-Content-Type-Options, Referrer-Policy,
+  Permissions-Policy, exposición de tecnología (`Server`/`X-Powered-By`).
+- **CORS:** `Access-Control-Allow-Origin: *` (alta si va con credenciales).
+- **Cookies:** sin `Secure`/`HttpOnly`/`SameSite`, `SameSite=None` sin `Secure`
+  y prefijos `__Host-`/`__Secure-` mal configurados.
+- **Métodos:** `TRACE`/`TRACK` anunciados (Cross-Site Tracing).
 - **Vectores de XSS:** manejadores de evento inline (`on*=`), URIs `javascript:`,
   sumideros DOM (`innerHTML`, `document.write`…), marcos embebidos, *mixed
-  content* (recursos HTTP en página HTTPS) y formularios sin token anti-CSRF aparente.
+  content*, formularios sin token anti-CSRF aparente y posibles *open redirect*.
 - **Ofuscación:** `eval()`, `eval(atob())`, `new Function(string)`, `unescape()`,
   `String.fromCharCode()` y cadenas con escapes `\xNN`/`\uNNNN` largos.
 
@@ -42,10 +62,19 @@ ellos · `2` si hubo errores. Útil para fallar un pipeline de CI.
 - **Verificación TLS** explícita y **redirecciones** controladas (máx. 5,
   revalidando anti-SSRF en cada salto).
 
+## Integración continua
+
+- **CI** (`.github/workflows/ci.yml`): en cada push/PR ejecuta `node --check`,
+  ESLint, tests y `npm audit` (chequeo estructural).
+- **CodeQL** (`.github/workflows/codeql.yml`): análisis de seguridad del código
+  en cada push/PR y semanalmente.
+- **Escaneo web** (`.github/workflows/security-scan.yml`): lanzable a mano con
+  una URL; sube los hallazgos en SARIF a la pestaña *Security*.
+
 ## Próximas mejoras sugeridas
 
-- Parser HTML real (`parse5`/`cheerio`) para reducir falsos positivos de las
-  heurísticas regex.
+- Parser HTML real (`parse5`/`cheerio`) para reducir falsos positivos.
 - Escaneo por lotes con concurrencia limitada desde un fichero de URLs.
 - Fijar la conexión a la IP ya validada (evitar DNS rebinding).
-- ESLint + Prettier y workflow de CI en GitHub Actions.
+- Inspección TLS (versión, caducidad del certificado) y detección de librerías
+  JS con CVE conocido (estilo retire.js).

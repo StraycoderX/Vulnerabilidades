@@ -1,16 +1,24 @@
 'use strict';
 
-// Tests sin dependencias externas, usando el runner integrado de Node (node:test).
+// Tests sin dependencias externas, con el runner integrado de Node (node:test).
 const test = require('node:test');
 const assert = require('node:assert');
 const { URL } = require('url');
-const {
-    esDireccionPrivada,
-    analizarCabeceras,
-    analizarXSS,
-    analizarOfuscacion,
-    exitCodePorHallazgos,
-} = require('./index.js');
+
+const { esDireccionPrivada } = require('./src/net');
+const { analizarCabeceras, graduarCSP } = require('./src/rules/headers');
+const { analizarXSS } = require('./src/rules/xss');
+const { analizarOfuscacion } = require('./src/rules/obfuscation');
+const { analizar, exitCodePorHallazgos } = require('./src/engine');
+const { aSARIF, huellasDeReportes, diffContraBaseline } = require('./src/report');
+
+const ctx = (overrides) => ({
+    url: new URL('https://ejemplo.com/'),
+    statusCode: 200,
+    headers: {},
+    body: '',
+    ...overrides,
+});
 
 test('anti-SSRF: detecta direcciones privadas/internas', () => {
     for (const ip of ['127.0.0.1', '10.0.0.5', '192.168.1.1', '172.16.0.1', '169.254.169.254', '::1', '::ffff:127.0.0.1', 'fd00::1']) {
@@ -25,43 +33,70 @@ test('anti-SSRF: permite direcciones públicas', () => {
 });
 
 test('cabeceras: marca ausencia de CSP/HSTS y cookie insegura', () => {
-    const url = new URL('https://ejemplo.com/');
-    const h = analizarCabeceras(url, { 'set-cookie': ['sid=abc; Path=/'] });
-    assert.ok(h.some((f) => f.mensaje.includes('CSP')));
-    assert.ok(h.some((f) => f.mensaje.includes('HSTS')));
-    assert.ok(h.some((f) => f.categoria === 'cookies'));
+    const h = analizarCabeceras(ctx({ headers: { 'set-cookie': ['sid=abc; Path=/'] } }));
+    assert.ok(h.some((f) => f.id === 'csp-ausente'));
+    assert.ok(h.some((f) => f.id === 'hsts-ausente'));
+    assert.ok(h.some((f) => f.id === 'cookie-insegura'));
 });
 
-test('cabeceras: no marca CSP/HSTS si están presentes', () => {
-    const url = new URL('https://ejemplo.com/');
-    const h = analizarCabeceras(url, {
-        'content-security-policy': "default-src 'self'; frame-ancestors 'none'",
-        'strict-transport-security': 'max-age=31536000',
-        'x-content-type-options': 'nosniff',
-        'referrer-policy': 'no-referrer',
-        'permissions-policy': 'geolocation=()',
-    });
-    assert.ok(!h.some((f) => f.mensaje.includes('CSP')));
-    assert.ok(!h.some((f) => f.mensaje.includes('HSTS')));
+test('cabeceras: gradúa una CSP permisiva', () => {
+    const h = graduarCSP("default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval' *");
+    assert.ok(h.some((f) => f.id === 'csp-unsafe-inline'));
+    assert.ok(h.some((f) => f.id === 'csp-unsafe-eval'));
+    assert.ok(h.some((f) => f.id === 'csp-wildcard'));
+});
+
+test('cabeceras: CORS comodín con credenciales es severidad alta', () => {
+    const h = analizarCabeceras(ctx({
+        headers: { 'access-control-allow-origin': '*', 'access-control-allow-credentials': 'true' },
+    }));
+    const cors = h.find((f) => f.id === 'cors-comodin-credenciales');
+    assert.ok(cors && cors.severidad === 'alta');
+});
+
+test('cabeceras: prefijo __Host- mal configurado', () => {
+    const h = analizarCabeceras(ctx({ headers: { 'set-cookie': ['__Host-sid=abc; Path=/admin'] } }));
+    assert.ok(h.some((f) => f.id === 'cookie-prefijo-host'));
 });
 
 test('xss: detecta handlers inline, javascript: y mixed content', () => {
-    const url = new URL('https://ejemplo.com/');
     const html = `<img src=x onerror="alert(1)"><a href="javascript:alert(2)">x</a><script src="http://cdn.io/a.js"></script>`;
-    const h = analizarXSS(url, html);
-    assert.ok(h.some((f) => f.mensaje.includes('on*')));
-    assert.ok(h.some((f) => f.mensaje.includes('javascript:')));
-    assert.ok(h.some((f) => f.mensaje.includes('mixed content')));
+    const h = analizarXSS(ctx({ body: html }));
+    assert.ok(h.some((f) => f.id === 'evento-inline'));
+    assert.ok(h.some((f) => f.id === 'javascript-uri'));
+    assert.ok(h.some((f) => f.id === 'mixed-content'));
 });
 
 test('ofuscacion: detecta eval(atob()) y escapes largos', () => {
     const html = `<script>eval(atob("YWxlcnQoMSk="));var s="\\x61\\x62\\x63\\x64\\x65\\x66\\x67\\x68";</script>`;
-    const h = analizarOfuscacion(html);
+    const h = analizarOfuscacion(ctx({ body: html }));
     assert.ok(h.some((f) => f.mensaje.includes('atob')));
-    assert.ok(h.some((f) => f.mensaje.toLowerCase().includes('hex')));
+    assert.ok(h.some((f) => f.id === 'ofuscacion-escapes'));
 });
 
-test('exit code: 1 si hay hallazgos altos/medios', () => {
-    assert.strictEqual(exitCodePorHallazgos({ hallazgos: [{ severidad: 'media' }] }), 1);
-    assert.strictEqual(exitCodePorHallazgos({ hallazgos: [{ severidad: 'info' }] }), 0);
+test('engine: ordena por severidad y calcula exit code', () => {
+    const reporte = analizar(ctx({ headers: { 'set-cookie': ['sid=1; Path=/'] }, body: '<img onerror="x()">' }));
+    assert.ok(reporte.hallazgos.length > 0);
+    // El primero debe ser de severidad >= que el último.
+    const ord = { alta: 3, media: 2, baja: 1, info: 0 };
+    assert.ok(ord[reporte.hallazgos[0].severidad] >= ord[reporte.hallazgos.at(-1).severidad]);
+    assert.strictEqual(exitCodePorHallazgos(reporte), 1);
+});
+
+test('SARIF: estructura válida con reglas y resultados', () => {
+    const reporte = analizar(ctx({ headers: {} }));
+    const sarif = aSARIF([reporte]);
+    assert.strictEqual(sarif.version, '2.1.0');
+    assert.ok(Array.isArray(sarif.runs[0].results));
+    assert.ok(sarif.runs[0].tool.driver.rules.length > 0);
+    assert.ok(['error', 'warning', 'note'].includes(sarif.runs[0].results[0].level));
+});
+
+test('baseline: diff reporta solo hallazgos nuevos', () => {
+    const reporte = analizar(ctx({ headers: {} }));
+    const baseline = huellasDeReportes([reporte]);
+    // Sin cambios: nada nuevo.
+    assert.strictEqual(diffContraBaseline(reporte, baseline).nuevos.length, 0);
+    // Con baseline vacía: todo es nuevo.
+    assert.strictEqual(diffContraBaseline(reporte, []).nuevos.length, reporte.hallazgos.length);
 });

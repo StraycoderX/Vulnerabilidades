@@ -1,0 +1,38 @@
+name: Escaneo de seguridad web (SARIF)
+
+# Ejecuta el analizador contra una URL y publica los hallazgos en la pestaña
+# Security (Code Scanning). Se lanza manualmente indicando la URL objetivo.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL a analizar (http/https público)'
+        required: true
+        default: 'https://example.com'
+
+jobs:
+  scan:
+    name: Analizar URL y subir SARIF
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Ejecutar escaneo y generar SARIF
+        # La URL se pasa por variable de entorno para evitar inyección de comandos.
+        env:
+          URL_OBJETIVO: ${{ inputs.url }}
+        run: node index.js --sarif "$URL_OBJETIVO" > resultados.sarif
+        continue-on-error: true
+
+      - name: Subir SARIF a Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: resultados.sarif
