@@ -1,0 +1,9 @@
+.git
+node_modules
+test.js
+test-integration.js
+.github
+*.md
+tsconfig.json
+eslint.config.js
+package-lock.json

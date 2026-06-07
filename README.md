@@ -91,10 +91,27 @@ sonda de XSS reflejado.
 - **Verificación TLS** explícita y **redirecciones** controladas (máx. 5,
   revalidando anti-SSRF en cada salto).
 
+## Docker y GitHub Action
+
+```bash
+docker build -t analizador-vuln .
+docker run --rm analizador-vuln --json https://example.com
+```
+
+Como Action reutilizable en un workflow:
+
+```yaml
+- uses: StraycoderX/Vulnerabilidades@main
+  with:
+    url: https://example.com
+    format: --sarif
+```
+
 ## Integración continua
 
 - **CI** (`.github/workflows/ci.yml`): en cada push/PR ejecuta `node --check`,
-  ESLint, tests y `npm audit` (chequeo estructural).
+  ESLint, **typecheck (`tsc --checkJs`)**, tests (unitarios + integración) y
+  `npm audit` (chequeo estructural).
 - **CodeQL** (`.github/workflows/codeql.yml`): análisis de seguridad del código
   en cada push/PR y semanalmente.
 - **Escaneo web** (`.github/workflows/security-scan.yml`): lanzable a mano con

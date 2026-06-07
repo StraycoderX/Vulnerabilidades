@@ -27,6 +27,9 @@ jobs:
       - name: Lint (ESLint)
         run: npm run lint
 
+      - name: Typecheck (tsc --checkJs)
+        run: npm run typecheck
+
       - name: Tests
         run: npm test
 

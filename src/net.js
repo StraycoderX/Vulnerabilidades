@@ -56,11 +56,18 @@ async function validarObjetivo(rawUrl) {
     }
 
     const { address, family } = await dns.lookup(url.hostname);
-    if (esDireccionPrivada(address)) {
+    if (esDireccionPrivada(address) && !loopbackPermitidoEnPruebas(address)) {
         throw new Error(`Destino bloqueado por seguridad (dirección interna/privada: ${address})`);
     }
 
     return { url, address, family };
+}
+
+// Excepción SOLO para tests de integración: permite loopback si se activa
+// explícitamente la variable de entorno. Off por defecto; no afecta a producción.
+function loopbackPermitidoEnPruebas(address) {
+    if (process.env.VULN_TEST_ALLOW_LOOPBACK !== '1') return false;
+    return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
 // Devuelve un `lookup` que siempre resuelve a la IP ya validada. Así la conexión

@@ -1,6 +1,19 @@
 'use strict';
 
 // Crea un hallazgo con un `id` estable (se usa como ruleId en SARIF).
+/**
+ * @typedef {Object} Hallazgo
+ * @property {string} id
+ * @property {string} severidad
+ * @property {string} categoria
+ * @property {string} mensaje
+ * @property {string|null} detalle
+ * @property {string|null} referencia
+ */
+/**
+ * @param {{ id: string, severidad: string, categoria: string, mensaje: string, detalle?: string|null, referencia?: string|null }} opts
+ * @returns {Hallazgo}
+ */
 function hallazgo({ id, severidad, categoria, mensaje, detalle, referencia }) {
     return {
         id,

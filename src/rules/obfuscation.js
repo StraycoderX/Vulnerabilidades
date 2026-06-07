@@ -7,6 +7,7 @@ const { hallazgo } = require('./util');
 function analizarOfuscacion(ctx) {
     const html = ctx.body;
     const hallazgos = [];
+    /** @type {Array<[RegExp, string]>} */
     const patrones = [
         [/\beval\s*\(\s*atob\s*\(/gi, 'eval(atob()) — patrón típico de payload oculto'],
         [/\beval\s*\(/gi, 'eval()'],

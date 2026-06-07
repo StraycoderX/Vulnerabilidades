@@ -1,0 +1,19 @@
+name: 'Analizador de Vulnerabilidades Web'
+description: 'Escanea una URL en busca de problemas de seguridad y puede emitir SARIF.'
+branding:
+  icon: 'shield'
+  color: 'red'
+inputs:
+  url:
+    description: 'URL a analizar (http/https público)'
+    required: true
+  format:
+    description: 'Formato de salida: --sarif, --json o --html'
+    required: false
+    default: '--sarif'
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.format }}
+    - ${{ inputs.url }}
