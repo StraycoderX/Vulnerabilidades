@@ -3,9 +3,10 @@
 const readline = require('readline');
 const fs = require('fs');
 const { escanear, exitCodePorHallazgos } = require('./src/engine');
-const { escanearHeadless } = require('./src/headless');
+const { escanearHeadlessLote } = require('./src/headless');
 const { rastrear } = require('./src/crawl');
 const { mapearConcurrencia } = require('./src/pool');
+const { MAX_CONCURRENCIA } = require('./src/config');
 const {
     imprimirReporte,
     huellasDeReportes,
@@ -62,46 +63,45 @@ async function modoCLI(urls, opciones) {
                 salida = 2;
             }
         }
+    } else if (opciones.headless) {
+        // Modo headless: un único navegador reutilizado para todo el lote.
+        reportes = await escanearHeadlessLote(urls, opciones);
+        if (reportes.some((r) => r.error)) salida = 2;
     } else {
         // Escaneo concurrente con límite, preservando el orden de las URLs.
-        const escanearUrl = async (u) => {
+        reportes = await mapearConcurrencia(urls, opciones.concurrencia, async (u) => {
             try {
-                if (opciones.headless) {
-                    const r = await escanearHeadless(u, opciones);
-                    if (r.error) {
-                        salida = 2;
-                        return { url: u, error: r.error };
-                    }
-                    return r.reporte;
-                }
                 return await escanear(u, opciones);
             } catch (err) {
                 salida = 2;
                 return { url: u, error: err.message };
             }
-        };
-        // El navegador headless es pesado: limita más la concurrencia.
-        const limite = opciones.headless ? Math.min(opciones.concurrencia, 2) : opciones.concurrencia;
-        reportes = await mapearConcurrencia(urls, limite, escanearUrl);
+        });
     }
 
     // Baseline / diff: reportar solo hallazgos nuevos frente al escaneo previo.
     let aMostrar = reportes;
     if (opciones.baseline) {
+        const huellasActuales = huellasDeReportes(reportes);
         if (!fs.existsSync(opciones.baseline)) {
-            fs.writeFileSync(opciones.baseline, JSON.stringify({ huellas: huellasDeReportes(reportes) }, null, 2));
+            fs.writeFileSync(opciones.baseline, JSON.stringify({ huellas: huellasActuales }, null, 2));
             if (!opciones.json && !opciones.sarif) {
-                console.error(`Baseline creada en ${opciones.baseline} con ${huellasDeReportes(reportes).length} hallazgo(s). Próximos escaneos mostrarán solo lo nuevo.`);
+                console.error(`Baseline creada en ${opciones.baseline} con ${huellasActuales.length} hallazgo(s). Próximos escaneos mostrarán solo lo nuevo.`);
             }
             aMostrar = [];
         } else {
-            const baseline = JSON.parse(fs.readFileSync(opciones.baseline, 'utf8')).huellas || [];
+            let baseline = [];
+            try {
+                baseline = JSON.parse(fs.readFileSync(opciones.baseline, 'utf8')).huellas || [];
+            } catch (e) {
+                console.error(`Aviso: baseline ilegible (${e.message}); se mostrarán todos los hallazgos.`);
+            }
             aMostrar = reportes.map((r) =>
                 r.hallazgos ? { ...r, hallazgos: diffContraBaseline(r, baseline).nuevos } : r
             );
         }
         if (opciones.actualizarBaseline) {
-            fs.writeFileSync(opciones.baseline, JSON.stringify({ huellas: huellasDeReportes(reportes) }, null, 2));
+            fs.writeFileSync(opciones.baseline, JSON.stringify({ huellas: huellasActuales }, null, 2));
         }
     }
 
@@ -139,7 +139,7 @@ Uso:
   node index.js --input urls.txt         Analiza las URLs de un fichero (una por línea)
   node index.js --concurrency N <urls>   Nº de escaneos en paralelo (por defecto 5)
   node index.js --html <url>             Salida como reporte HTML
-  node index.js --crawl N [--max-pages M] <url>
+  node index.js --crawl N [--max-pages M] [--delay ms] <url>
                                          Rastrea el mismo origen hasta profundidad N
   node index.js --headless <url>         Renderiza con navegador (DAST: SPA, DOM-XSS, CSP runtime)
                                          Requiere: npm i -D playwright && npx playwright install chromium
@@ -162,7 +162,7 @@ async function main() {
     const opciones = {
         json: false, sarif: false, html: false,
         baseline: null, actualizarBaseline: false,
-        concurrencia: 5, crawl: 0, maxPaginas: 20,
+        concurrencia: 5, crawl: 0, maxPaginas: 20, delay: 0,
         headless: false, active: false, authorized: false,
         headers: {}, cookie: null,
     };
@@ -174,9 +174,10 @@ async function main() {
         else if (a === '--html') opciones.html = true;
         else if (a === '--update-baseline') opciones.actualizarBaseline = true;
         else if (a === '--baseline') opciones.baseline = args[++i];
-        else if (a === '--concurrency') opciones.concurrencia = Math.max(1, Number(args[++i]) || 5);
+        else if (a === '--concurrency') opciones.concurrencia = Math.min(MAX_CONCURRENCIA, Math.max(1, Number(args[++i]) || 5));
         else if (a === '--crawl') opciones.crawl = Math.max(0, Number(args[++i]) || 0);
         else if (a === '--max-pages') opciones.maxPaginas = Math.max(1, Number(args[++i]) || 20);
+        else if (a === '--delay') opciones.delay = Math.max(0, Number(args[++i]) || 0);
         else if (a === '--headless') opciones.headless = true;
         else if (a === '--active') opciones.active = true;
         else if (a === '--authorized') opciones.authorized = true;
@@ -199,6 +200,13 @@ async function main() {
         console.error('El modo activo (--active) envía peticiones de prueba y solo debe usarse sobre objetivos\npropios o con autorización explícita. Añade --authorized para confirmarlo.');
         process.exitCode = 2;
         return;
+    }
+
+    if (opciones.headless && opciones.crawl > 0) {
+        console.error('Aviso: --headless no se aplica durante --crawl; las páginas rastreadas se analizan sin navegador.');
+    }
+    if (opciones.crawl > 0 && opciones.active && opciones.authorized) {
+        console.error('Aviso: --active + --crawl lanzará sondas de inyección en CADA página del sitio. Asegúrate de tener autorización para todo el alcance.');
     }
 
     if (urls.length === 0) {

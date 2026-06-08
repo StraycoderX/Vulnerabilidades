@@ -32,20 +32,38 @@ function construirCabeceras(opciones) {
 async function escanearDetallado(entrada, opciones = {}) {
     const target = await validarObjetivo(entrada);
     const extra = { headers: construirCabeceras(opciones) };
-    const { statusCode, headers, body } = await descargar(target, extra);
 
-    const tlsInfo = target.url.protocol === 'https:' ? await inspeccionarTLS(target).catch(() => null) : null;
+    let descarga;
+    try {
+        descarga = await descargar(target, extra);
+    } catch (err) {
+        // Si el fallo es de certificado en https, inspecciona el TLS y reporta el
+        // problema (p. ej. certificado caducado) en vez de abortar el escaneo.
+        if (target.url.protocol === 'https:' && /cert|tls|ssl|altname|self.signed|expired|verif/i.test(err.message)) {
+            const tlsInfo = await inspeccionarTLS(target).catch(() => null);
+            if (tlsInfo && !tlsInfo.error) {
+                const reporte = analizar({
+                    url: target.url, statusCode: 0, headers: {}, body: '', tls: tlsInfo, active: null,
+                });
+                return { reporte, dom: parsearHTML(''), url: target.url };
+            }
+        }
+        throw err;
+    }
+
+    const { statusCode, headers, body, url: urlFinal, tls } = descarga;
 
     // Sondas activas (XSS reflejado, SSTI, SQLi, open redirect): solo con
-    // autorización explícita.
+    // autorización explícita. Se prueban sobre la URL ORIGINAL (donde están los
+    // parámetros que dio el usuario), aunque el informe use la URL final.
     let active = null;
     if (opciones.active && opciones.authorized) {
         active = await ejecutarSondasActivas(target, extra).catch(() => null);
     }
 
     const dom = parsearHTML(body || '');
-    const reporte = analizar({ url: target.url, statusCode, headers, body, tls: tlsInfo, active, dom });
-    return { reporte, dom, url: target.url };
+    const reporte = analizar({ url: urlFinal, statusCode, headers, body, tls, active, dom });
+    return { reporte, dom, url: urlFinal };
 }
 
 // Variante simple: solo el reporte.

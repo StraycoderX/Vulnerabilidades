@@ -1,8 +1,9 @@
 'use strict';
 
-// Tests de INTEGRACIÓN: levantan un servidor HTTP local y ejercitan las rutas de
-// red reales (descarga, crawl, modo activo, escaneo autenticado). El allowlist de
-// loopback se activa solo aquí mediante la variable de entorno.
+// Tests de INTEGRACIÓN: levantan servidores HTTP locales y ejercitan las rutas de
+// red reales (descarga, crawl, modo activo, escaneo autenticado, redirecciones).
+// El allowlist de loopback exige NODE_ENV=test + la variable explícita.
+process.env.NODE_ENV = 'test';
 process.env.VULN_TEST_ALLOW_LOOPBACK = '1';
 
 const test = require('node:test');
@@ -13,34 +14,48 @@ const { escanearHeadless } = require('./src/headless');
 const { rastrear } = require('./src/crawl');
 const { validarObjetivo, descargar } = require('./src/net');
 
-let servidor;
-let base;
+let servidor, servidorB, base, baseB;
 
 test.before(async () => {
+    // Servidor secundario (distinto origen) para probar fuga de credenciales.
+    servidorB = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(`cookie=${req.headers.cookie || ''}; auth=${req.headers.authorization || ''}`);
+    });
+    await new Promise((r) => servidorB.listen(0, '127.0.0.1', r));
+    baseB = `http://127.0.0.1:${servidorB.address().port}`;
+
     servidor = http.createServer((req, res) => {
         const url = new URL(req.url, 'http://localhost');
         const q = url.searchParams.get('q') || '';
 
         if (url.pathname === '/echo') {
             res.writeHead(200, { 'Content-Type': 'text/plain' });
-            res.end(`x-prueba=${req.headers['x-prueba'] || ''}; cookie=${req.headers.cookie || ''}`);
+            res.end(`x-prueba=${req.headers['x-prueba'] || ''}; cookie=${req.headers.cookie || ''}; ` +
+                `ae=${req.headers['accept-encoding'] || ''}`);
             return;
         }
-
         if (url.pathname === '/page2') {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<html><body><iframe src="x"></iframe></body></html>');
             return;
         }
-
-        // Open redirect: redirige al valor del parámetro `next` sin validar.
+        if (url.pathname === '/goto') {
+            res.writeHead(302, { Location: '/page2' });
+            res.end();
+            return;
+        }
         if (url.pathname === '/redir') {
             res.writeHead(302, { Location: url.searchParams.get('next') || '/' });
             res.end();
             return;
         }
-
-        // Vulnerable a SQLi (error-based) y SSTI según el contenido de `q`.
+        // Redirección a OTRO origen (servidor B), para verificar que no se filtran credenciales.
+        if (url.pathname === '/redir-ext') {
+            res.writeHead(302, { Location: `${baseB}/echo` });
+            res.end();
+            return;
+        }
         if (url.pathname === '/buscar') {
             let salida = q;
             if (q.includes("'")) salida += ' — You have an error in your SQL syntax near MySQL';
@@ -49,12 +64,7 @@ test.before(async () => {
             res.end(`<html><body>res: ${salida}</body></html>`);
             return;
         }
-
-        // Página principal: insegura a propósito y refleja `q` sin escapar.
-        res.writeHead(200, {
-            'Content-Type': 'text/html',
-            'Set-Cookie': 'sid=abc; Path=/',
-        });
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Set-Cookie': 'sid=abc; Path=/' });
         res.end(`<html><body>
             <img src=p onerror="alert(1)">
             <script src="/js/jquery-1.12.4.min.js"></script>
@@ -67,7 +77,10 @@ test.before(async () => {
     base = `http://127.0.0.1:${servidor.address().port}`;
 });
 
-test.after(() => servidor && servidor.close());
+test.after(() => {
+    if (servidor) servidor.close();
+    if (servidorB) servidorB.close();
+});
 
 test('integración: escaneo detecta hallazgos reales', async () => {
     const reporte = await escanear(`${base}/`);
@@ -102,9 +115,29 @@ test('integración: modo activo detecta open redirect', async () => {
     assert.ok(reporte.hallazgos.some((f) => f.id === 'open-redirect-activo'));
 });
 
+test('integración: la URL reportada es la final tras una redirección', async () => {
+    const reporte = await escanear(`${base}/goto`);
+    assert.ok(reporte.url.endsWith('/page2'), `url=${reporte.url}`);
+});
+
+test('integración: NO se reenvían credenciales a otro origen tras redirección', async () => {
+    const target = await validarObjetivo(`${base}/redir-ext`);
+    const { body } = await descargar(target, { headers: { Cookie: 'sesion=secreta', Authorization: 'Bearer T' } });
+    assert.ok(body.includes('cookie=;'), `no debería llegar la cookie: ${body}`);
+    assert.ok(body.includes('auth='), body);
+    assert.ok(!body.includes('secreta'), 'la cookie no debe filtrarse al otro origen');
+    assert.ok(!body.includes('Bearer T'), 'el Authorization no debe filtrarse al otro origen');
+});
+
+test('integración: envía Accept-Encoding identity y cabeceras propias', async () => {
+    const target = await validarObjetivo(`${base}/echo`);
+    const { body } = await descargar(target, { headers: { 'x-prueba': 'ok', Cookie: 'sesion=1' } });
+    assert.ok(body.includes('x-prueba=ok'));
+    assert.ok(body.includes('cookie=sesion=1'));
+    assert.ok(body.includes('ae=identity'), `Accept-Encoding debería ser identity: ${body}`);
+});
+
 test('integración: orquestación headless (Playwright simulado)', async () => {
-    // Playwright falso que emite una violación de CSP y devuelve un DOM con un
-    // manejador inline, para verificar el cableado y el análisis del DOM renderizado.
     const handlers = {};
     const page = {
         on: (ev, cb) => ((handlers[ev] = handlers[ev] || []).push(cb)),
@@ -116,24 +149,13 @@ test('integración: orquestación headless (Playwright simulado)', async () => {
         },
         content: async () => '<html><body><img src=x onerror="roba()"></body></html>',
     };
+    const contexto = { newPage: async () => page, close: async () => {} };
     const playwrightFalso = {
-        chromium: {
-            launch: async () => ({
-                newContext: async () => ({ newPage: async () => page }),
-                close: async () => {},
-            }),
-        },
+        chromium: { launch: async () => ({ newContext: async () => contexto, close: async () => {} }) },
     };
 
     const { reporte } = await escanearHeadless(`${base}/`, {}, { playwright: playwrightFalso });
     const ids = reporte.hallazgos.map((f) => f.id);
     assert.ok(ids.includes('csp-violacion-runtime'), 'CSP runtime');
     assert.ok(ids.includes('evento-inline'), 'analiza el DOM renderizado');
-});
-
-test('integración: escaneo autenticado envía cabeceras y cookie', async () => {
-    const target = await validarObjetivo(`${base}/echo`);
-    const { body } = await descargar(target, { headers: { 'x-prueba': 'ok', Cookie: 'sesion=1' } });
-    assert.ok(body.includes('x-prueba=ok'));
-    assert.ok(body.includes('cookie=sesion=1'));
 });
