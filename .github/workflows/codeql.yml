@@ -1,0 +1,30 @@
+name: CodeQL (análisis de seguridad)
+
+# Análisis de seguridad del código en cada update (push y pull request),
+# más un escaneo semanal programado. Detecta patrones inseguros como
+# inyección, SSRF, uso peligroso de APIs, etc.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1' # lunes a las 06:00 UTC
+
+jobs:
+  analyze:
+    name: Analizar (JavaScript)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          queries: security-and-quality
+
+      - name: Ejecutar análisis CodeQL
+        uses: github/codeql-action/analyze@v3

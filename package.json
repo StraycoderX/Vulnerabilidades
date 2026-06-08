@@ -1,0 +1,23 @@
+{
+  "name": "analizador-vulnerabilidades-web",
+  "version": "2.2.0",
+  "description": "Analizador de seguridad web (arquitectura de reglas, parser HTML propio): cabeceras/CSP, CORS, XSS, ofuscación, librerías vulnerables y TLS, con crawling de mismo origen, escaneo autenticado y sonda activa de XSS reflejado. Salidas consola/JSON/SARIF/HTML, baseline/diff y concurrencia. Anti-SSRF/rebinding. Sin dependencias de ejecución.",
+  "main": "index.js",
+  "bin": {
+    "analizador-vuln": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "node --check index.js && npm run lint && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^25.9.2",
+    "eslint": "^9.0.0",
+    "typescript": "^6.0.3"
+  },
+  "license": "MIT"
+}
