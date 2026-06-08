@@ -5,6 +5,18 @@ Todas las novedades notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [Unreleased]
+
+### Añadido
+
+- **Fuzzing** (property-testing) del clasificador anti-SSRF y del parser HTML:
+  ~40k entradas aleatorias y casos patológicos, verificando que no hay crashes,
+  bypasses ni degradación O(n²).
+- **Pipeline de release** (`.github/workflows/release.yml`): al publicar un tag
+  `vX.Y.Z` crea el GitHub Release, publica la imagen en GHCR y, si hay token,
+  en npm.
+- **`THREAT_MODEL.md`**: fronteras de confianza, amenazas y salvaguardas.
+
 ## [2.2.2] - 2026-06-08
 
 Segunda pasada de revisión: falsos positivos y robustez de la salida.
