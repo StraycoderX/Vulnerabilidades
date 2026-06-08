@@ -2,18 +2,25 @@
 
 const { SEVERIDAD, RESET } = require('./config');
 
+// Elimina caracteres de control (incluido ESC) del texto que provenga del sitio
+// analizado, para evitar inyección de secuencias de escape en la terminal.
+function limpiarControl(s) {
+    // eslint-disable-next-line no-control-regex
+    return String(s == null ? '' : s).replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+}
+
 // --- Reporte de consola ----------------------------------------------------
 function imprimirReporte(reporte, usarColor = true) {
     const c = (s, color) => (usarColor ? `${color}${s}${RESET}` : s);
-    console.log(`\nAnálisis de ${reporte.url} (HTTP ${reporte.statusCode})`);
+    console.log(`\nAnálisis de ${limpiarControl(reporte.url)} (HTTP ${reporte.statusCode})`);
     if (!reporte.hallazgos.length) {
         console.log('  Sin hallazgos.');
         return;
     }
     for (const f of reporte.hallazgos) {
         const sev = SEVERIDAD[f.severidad];
-        console.log(`  [${c(sev.etiqueta, sev.color)}] (${f.categoria}) ${f.mensaje}`);
-        if (f.detalle) console.log(`         ${f.detalle}`);
+        console.log(`  [${c(sev.etiqueta, sev.color)}] (${f.categoria}) ${limpiarControl(f.mensaje)}`);
+        if (f.detalle) console.log(`         ${limpiarControl(f.detalle)}`);
     }
     const resumen = {};
     for (const f of reporte.hallazgos) resumen[f.severidad] = (resumen[f.severidad] || 0) + 1;
@@ -90,7 +97,7 @@ function aSARIF(reportes) {
                     driver: {
                         name: 'analizador-vulnerabilidades-web',
                         informationUri: 'https://github.com/StraycoderX/Vulnerabilidades',
-                        version: '2.0.0',
+                        version: require('../package.json').version,
                         rules: [...reglasVistas.values()],
                     },
                 },
@@ -146,6 +153,7 @@ th{background:#f5f5f5} .sev{color:#fff;padding:.1rem .5rem;border-radius:.3rem;f
 
 module.exports = {
     imprimirReporte,
+    limpiarControl,
     huella,
     huellasDeReportes,
     diffContraBaseline,

@@ -89,8 +89,10 @@ function analizarXSS(ctx) {
         }));
     }
 
-    // Posible open redirect.
-    const redirects = (html || '').match(/[?&](?:url|next|redirect|return|dest|destination)=https?%3a/gi) || [];
+    // Posible open redirect: parámetro de redirección hacia URL absoluta,
+    // tanto codificada (https%3a) como sin codificar (https://) o sin esquema (//).
+    const redirects =
+        (html || '').match(/[?&](?:url|next|redirect|redir|return|returnurl|dest|destination|continue|goto|to)=(?:https?(?::|%3a)|%2f%2f|\/\/)/gi) || [];
     if (redirects.length) {
         hallazgos.push(hallazgo({
             id: 'open-redirect', severidad: 'info', categoria: 'redireccion',
