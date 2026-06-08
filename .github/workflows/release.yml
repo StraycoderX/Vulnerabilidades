@@ -1,11 +1,17 @@
 name: Release
 
-# Se dispara al publicar un tag vX.Y.Z. Verifica, crea el GitHub Release con
-# notas automáticas, publica la imagen en GHCR y (si hay token) en npm.
+# Se dispara al publicar un tag vX.Y.Z, o manualmente indicando un tag. Verifica,
+# crea el GitHub Release (idempotente), publica la imagen en GHCR y, si hay token,
+# en npm.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag a publicar (p. ej. v2.2.2)'
+        required: true
 
 permissions:
   contents: write
@@ -16,7 +22,13 @@ jobs:
     name: Publicar release
     runs-on: ubuntu-latest
     steps:
+      - name: Determinar el tag
+        id: t
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.t.outputs.tag }}
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -29,10 +41,16 @@ jobs:
           npm install
           npm run check
 
-      - name: Crear GitHub Release
+      - name: Crear GitHub Release (si no existe)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
+        run: |
+          TAG="${{ steps.t.outputs.tag }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "El Release $TAG ya existe; no se vuelve a crear."
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
 
       - name: Login en GHCR
         uses: docker/login-action@v3
@@ -47,7 +65,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:${{ steps.t.outputs.tag }}
             ghcr.io/${{ github.repository }}:latest
 
       - name: Publicar en npm (si hay NPM_TOKEN)
