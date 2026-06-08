@@ -35,8 +35,14 @@ test('anti-SSRF: detecta direcciones privadas/internas', () => {
 });
 
 test('anti-SSRF: permite direcciones públicas', () => {
-    for (const ip of ['8.8.8.8', '1.1.1.1', '93.184.216.34', '2606:2800:220:1::1']) {
+    for (const ip of ['8.8.8.8', '1.1.1.1', '93.184.216.34', '2606:2800:220:1::1', '100.128.0.1', '192.0.1.1']) {
         assert.strictEqual(esDireccionPrivada(ip), false, `${ip} debería ser pública`);
+    }
+});
+
+test('anti-SSRF: rangos reservados y IPv6 mapped en hex', () => {
+    for (const ip of ['100.64.0.1', '192.0.0.1', '198.18.0.5', '224.0.0.1', '255.255.255.255', '::ffff:7f00:1', 'ff02::1']) {
+        assert.strictEqual(esDireccionPrivada(ip), true, `${ip} debería bloquearse`);
     }
 });
 
@@ -172,6 +178,21 @@ test('pool: respeta el límite de concurrencia y conserva el orden', async () =>
     });
     assert.deepStrictEqual(resultado, [10, 20, 30, 40, 50, 60]);
     assert.ok(maxActivos <= 2, `maxActivos=${maxActivos} debería ser <= 2`);
+});
+
+test('librerias: detecta versiones de dos partes (x.y)', () => {
+    const r = analizarLibrerias(ctx({ body: '<script src="/lib/jquery-1.4.min.js"></script>' }));
+    assert.ok(r.some((f) => f.id === 'libreria-vulnerable' && f.mensaje.includes('1.4')));
+});
+
+test('pool: una tarea que lanza no tumba el lote', async () => {
+    const res = await mapearConcurrencia([1, 2, 3], 2, async (x) => {
+        if (x === 2) throw new Error('boom');
+        return x * 10;
+    });
+    assert.strictEqual(res[0], 10);
+    assert.ok(res[1] && res[1].error && res[1].error.includes('boom'));
+    assert.strictEqual(res[2], 30);
 });
 
 test('librerias: detecta firmas ampliadas (Handlebars, Axios)', () => {

@@ -26,10 +26,14 @@ function extraerEnlacesMismoOrigen(dom, base) {
 // Rastrea desde una URL semilla, mismo origen, por niveles (BFS) hasta `profundidad`
 // y un máximo de `maxPaginas`, escaneando cada página con concurrencia limitada.
 // Devuelve un array de reportes.
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function rastrear(semilla, opciones = {}) {
     const profundidad = opciones.crawl || 0;
     const maxPaginas = opciones.maxPaginas || 20;
     const concurrencia = opciones.concurrencia || 5;
+    const delay = Math.max(0, opciones.delay || 0); // cortesía entre niveles (ms)
+    const topeVisitadas = maxPaginas * 10; // cota de memoria del conjunto de URLs
 
     const visitadas = new Set();
     const reportes = [];
@@ -52,9 +56,9 @@ async function rastrear(semilla, opciones = {}) {
         const siguiente = new Set();
         for (const r of resultados) {
             reportes.push(r.reporte);
-            if (prof < profundidad && r.dom && r.url) {
+            if (prof < profundidad && r.dom && r.url && visitadas.size < topeVisitadas) {
                 for (const enlace of extraerEnlacesMismoOrigen(r.dom, r.url)) {
-                    if (!visitadas.has(enlace)) {
+                    if (!visitadas.has(enlace) && visitadas.size < topeVisitadas) {
                         visitadas.add(enlace);
                         siguiente.add(enlace);
                     }
@@ -62,6 +66,7 @@ async function rastrear(semilla, opciones = {}) {
             }
         }
         nivelActual = [...siguiente];
+        if (delay && nivelActual.length) await dormir(delay);
     }
 
     return reportes;

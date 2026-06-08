@@ -45,12 +45,12 @@ async function pedirConParametro(target, parametro, valor, extra) {
 }
 
 async function sondaXSS(target, p, extra) {
-    const marcador = nuevoMarcador();
     try {
+        const marcador = nuevoMarcador();
         const { body } = await pedirConParametro(target, p, marcador, extra);
         return { tipo: 'xss', parametro: p, detectado: detectarReflejo(body, marcador) };
-    } catch {
-        return null;
+    } catch (e) {
+        return { tipo: 'xss', parametro: p, detectado: false, error: e.message };
     }
 }
 
@@ -58,8 +58,8 @@ async function sondaSSTI(target, p, extra) {
     try {
         const { body } = await pedirConParametro(target, p, SSTI_PAYLOAD, extra);
         return { tipo: 'ssti', parametro: p, detectado: !!body && body.includes(SSTI_ESPERADO) };
-    } catch {
-        return null;
+    } catch (e) {
+        return { tipo: 'ssti', parametro: p, detectado: false, error: e.message };
     }
 }
 
@@ -67,8 +67,8 @@ async function sondaSQLi(target, p, extra) {
     try {
         const { body } = await pedirConParametro(target, p, "1'\"", extra);
         return { tipo: 'sqli', parametro: p, detectado: detectarErrorSQL(body) };
-    } catch {
-        return null;
+    } catch (e) {
+        return { tipo: 'sqli', parametro: p, detectado: false, error: e.message };
     }
 }
 
@@ -81,13 +81,14 @@ async function sondaOpenRedirect(target, p, extra) {
         const loc = headers && headers.location ? String(headers.location) : '';
         const detectado = statusCode >= 300 && statusCode < 400 && loc.includes('redirect-canary.example');
         return { tipo: 'open-redirect', parametro: p, detectado };
-    } catch {
-        return null;
+    } catch (e) {
+        return { tipo: 'open-redirect', parametro: p, detectado: false, error: e.message };
     }
 }
 
 // Ejecuta todas las sondas activas sobre los parámetros de query de la URL.
-// Devuelve [{ tipo, parametro, detectado }].
+// Devuelve [{ tipo, parametro, detectado, error? }]. Los fallos NO se silencian:
+// se avisan por stderr para que no se confundan con "no vulnerable".
 async function ejecutarSondasActivas(target, extra = {}) {
     const params = [...target.url.searchParams.keys()];
     const resultados = [];
@@ -97,7 +98,10 @@ async function ejecutarSondasActivas(target, extra = {}) {
         resultados.push(await sondaSQLi(target, p, extra));
         if (PARAMS_REDIRECT.test(p)) resultados.push(await sondaOpenRedirect(target, p, extra));
     }
-    return resultados.filter(Boolean);
+    for (const r of resultados) {
+        if (r.error) console.error(`Aviso: la sonda ${r.tipo} sobre "${r.parametro}" falló (${r.error}); resultado no concluyente.`);
+    }
+    return resultados;
 }
 
 module.exports = {

@@ -10,7 +10,12 @@ async function mapearConcurrencia(items, limite, fn) {
     async function trabajador() {
         while (siguiente < items.length) {
             const i = siguiente++;
-            resultados[i] = await fn(items[i], i);
+            try {
+                resultados[i] = await fn(items[i], i);
+            } catch (err) {
+                // Un fallo en una tarea no debe tumbar todo el lote.
+                resultados[i] = { error: err && err.message ? err.message : String(err) };
+            }
         }
     }
 
