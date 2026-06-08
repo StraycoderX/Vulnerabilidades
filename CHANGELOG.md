@@ -5,6 +5,23 @@ Todas las novedades notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.2.2] - 2026-06-08
+
+Segunda pasada de revisión: falsos positivos y robustez de la salida.
+
+### Corregido
+
+- **Falso positivo de CSP**: una fuente concreta como `https://cdn.example.com`
+  ya no se marca como "esquema permisivo" (solo `https:`/`http:` a secas o `*`).
+- **Inyección en terminal**: se eliminan secuencias de control/ANSI del texto que
+  proviene del sitio analizado antes de imprimirlo en consola.
+- La versión del *tool* en la salida SARIF se toma de `package.json` (no fija).
+
+### Cambiado
+
+- La heurística pasiva de open redirect detecta también destinos sin codificar
+  (`=https://…`, `=//…`) además de la forma codificada.
+
 ## [2.2.1] - 2026-06-08
 
 Tanda de endurecimiento tras una revisión de seguridad/estabilidad/escalabilidad.
@@ -87,5 +104,6 @@ continua que revisa seguridad y estructura en cada cambio.
 - Migración de un único fichero a la estructura modular en `src/`.
 - La detección de XSS pasó de expresiones regulares a análisis del DOM tokenizado.
 
+[2.2.2]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.2
 [2.2.1]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.1
 [2.2.0]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.0

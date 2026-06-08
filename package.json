@@ -1,6 +1,6 @@
 {
   "name": "analizador-vulnerabilidades-web",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Analizador de seguridad web (arquitectura de reglas, parser HTML propio): cabeceras/CSP, CORS, XSS, ofuscación, librerías vulnerables y TLS, con crawling de mismo origen, escaneo autenticado y sonda activa de XSS reflejado. Salidas consola/JSON/SARIF/HTML, baseline/diff y concurrencia. Anti-SSRF/rebinding. Sin dependencias de ejecución.",
   "main": "index.js",
   "bin": {

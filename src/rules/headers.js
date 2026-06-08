@@ -23,8 +23,9 @@ function graduarCSP(csp) {
             detalle: 'Habilita eval()/new Function(), vectores de inyección.',
         }));
     }
-    // Comodín de origen o esquema permisivo en las fuentes de script.
-    if (/(?:default-src|script-src)[^;]*(\*|https?:)(\s|;|$)/.test(v)) {
+    // Comodín de origen (*) o esquema permisivo como fuente (https: a secas),
+    // pero NO una fuente concreta como https://cdn.example.com.
+    if (/(?:default-src|script-src)[^;]*(\*|https?:(?!\/\/))(\s|;|$)/.test(v)) {
         hallazgos.push(hallazgo({
             id: 'csp-wildcard', severidad: 'media', categoria: 'cabeceras',
             mensaje: 'CSP con origen comodín (*) o esquema permisivo en las fuentes de script',

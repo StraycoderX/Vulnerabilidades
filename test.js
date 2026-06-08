@@ -18,7 +18,7 @@ const { mapearConcurrencia } = require('./src/pool');
 const { detectarReflejo, detectarErrorSQL } = require('./src/active');
 const { extraerEnlacesMismoOrigen } = require('./src/crawl');
 const { analizar, exitCodePorHallazgos } = require('./src/engine');
-const { aSARIF, huellasDeReportes, diffContraBaseline, aHTML } = require('./src/report');
+const { aSARIF, huellasDeReportes, diffContraBaseline, aHTML, limpiarControl } = require('./src/report');
 
 const ctx = (overrides) => ({
     url: new URL('https://ejemplo.com/'),
@@ -58,6 +58,19 @@ test('cabeceras: gradúa una CSP permisiva', () => {
     assert.ok(h.some((f) => f.id === 'csp-unsafe-inline'));
     assert.ok(h.some((f) => f.id === 'csp-unsafe-eval'));
     assert.ok(h.some((f) => f.id === 'csp-wildcard'));
+});
+
+test('cabeceras: una fuente https concreta NO es esquema permisivo (sin FP)', () => {
+    const ok = graduarCSP("default-src 'self'; script-src https://cdn.example.com 'self'");
+    assert.ok(!ok.some((f) => f.id === 'csp-wildcard'), 'https://host concreto no debe marcarse');
+    const malo = graduarCSP('script-src https:');
+    assert.ok(malo.some((f) => f.id === 'csp-wildcard'), 'https: a secas sí es permisivo');
+});
+
+test('reporte: limpiarControl elimina secuencias de escape de terminal', () => {
+    assert.strictEqual(limpiarControl('a\x1b[31mROJO\x1b[0mb'), 'a[31mROJO[0mb');
+    assert.strictEqual(limpiarControl('x\x07\x00y'), 'xy');
+    assert.strictEqual(limpiarControl(null), '');
 });
 
 test('cabeceras: CORS comodín con credenciales es severidad alta', () => {
