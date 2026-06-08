@@ -1,11 +1,21 @@
 # Analizador de Vulnerabilidades Web
 
+[![CI](https://github.com/StraycoderX/Vulnerabilidades/actions/workflows/ci.yml/badge.svg)](https://github.com/StraycoderX/Vulnerabilidades/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/StraycoderX/Vulnerabilidades/actions/workflows/codeql.yml/badge.svg)](https://github.com/StraycoderX/Vulnerabilidades/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/StraycoderX/Vulnerabilidades?sort=semver)](https://github.com/StraycoderX/Vulnerabilidades/releases)
+[![License: MIT](https://img.shields.io/github/license/StraycoderX/Vulnerabilidades)](LICENSE)
+![Node](https://img.shields.io/badge/node-%3E%3D18-43853d)
+![Dependencias](https://img.shields.io/badge/dependencias%20de%20ejecuci%C3%B3n-0-success)
+
 Herramienta de consola en Node.js (sin dependencias) que descarga una página y
 emite un reporte de seguridad con **niveles de severidad**: revisa cabeceras de
 seguridad, vectores de XSS y patrones de código ofuscado.
 
 > ⚠️ Es una herramienta de apoyo basada en heurísticas, no un escáner
 > exhaustivo. Úsala solo sobre sitios para los que tengas autorización.
+
+![Ejemplo de informe](docs/demo.png)
+
 
 ## Uso
 
