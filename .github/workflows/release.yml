@@ -59,14 +59,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Nombre del repo en minúsculas (GHCR lo exige)
+        id: repo
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - name: Construir y publicar imagen Docker
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.t.outputs.tag }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ steps.repo.outputs.name }}:${{ steps.t.outputs.tag }}
+            ghcr.io/${{ steps.repo.outputs.name }}:latest
 
       - name: Publicar en npm (si hay NPM_TOKEN)
         env:
