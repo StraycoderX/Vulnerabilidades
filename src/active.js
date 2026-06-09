@@ -20,10 +20,12 @@ function detectarReflejo(body, marcador) {
 const SSTI_PAYLOAD = 's7{{73*137}}s7 s7${73*137}s7 s7<%=73*137%>s7';
 const SSTI_ESPERADO = 's710001s7';
 
-// Firmas de error SQL típicas en la respuesta.
+// Firmas de error SQL típicas en la respuesta. Los huecos `.{0,200}` están
+// ACOTADOS a propósito: un `.*` sin límite es cuadrático ante una respuesta
+// hostil que repita el token previo (DoS contra la propia herramienta).
 const FIRMAS_SQL = [
-    /SQL syntax.*MySQL/i, /Warning.*\bmysqli?_/i, /valid MySQL result/i,
-    /PostgreSQL.*ERROR/i, /Npgsql\./i, /ORA-\d{5}/i, /SQLite\/JDBCDriver/i,
+    /SQL syntax.{0,200}MySQL/i, /Warning.{0,200}\bmysqli?_/i, /valid MySQL result/i,
+    /PostgreSQL.{0,200}ERROR/i, /Npgsql\./i, /ORA-\d{5}/i, /SQLite\/JDBCDriver/i,
     /SQLiteException/i, /Microsoft OLE DB Provider for ODBC Drivers/i,
     /Unclosed quotation mark after the character string/i, /quoted string not properly terminated/i,
 ];
