@@ -28,7 +28,11 @@ function inspeccionarTLS(target) {
                 rejectUnauthorized: false,
                 lookup: (h, o, cb) => {
                     const f = typeof o === 'function' ? o : cb;
-                    f(null, address || host, family || 4);
+                    const opts = typeof o === 'function' ? {} : o || {};
+                    const dir = address || host;
+                    const fam = family || (String(dir).includes(':') ? 6 : 4);
+                    if (opts.all) f(null, [{ address: dir, family: fam }]);
+                    else f(null, dir, fam);
                 },
             },
             () => {

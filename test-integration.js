@@ -159,3 +159,21 @@ test('integración: orquestación headless (Playwright simulado)', async () => {
     assert.ok(ids.includes('csp-violacion-runtime'), 'CSP runtime');
     assert.ok(ids.includes('evento-inline'), 'analiza el DOM renderizado');
 });
+
+test('integración: escaneo por NOMBRE DE HOST (autoSelectFamily / Happy Eyeballs)', async () => {
+    // Reproduce el fallo real "Invalid IP address: undefined": al escanear por
+    // hostname (no IP literal), Node llama a nuestro lookup con all:true.
+    const dns = require('dns').promises;
+    const { address } = await dns.lookup('localhost');
+    const srv = require('http').createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><body><img onerror="x()"></body></html>');
+    });
+    await new Promise((r) => srv.listen(0, address, r));
+    try {
+        const reporte = await escanear(`http://localhost:${srv.address().port}/`);
+        assert.ok(reporte.totalHallazgos >= 1, 'debería analizar sin "Invalid IP address"');
+    } finally {
+        srv.close();
+    }
+});

@@ -103,10 +103,15 @@ async function validarObjetivo(rawUrl) {
 }
 
 // Devuelve un `lookup` que siempre resuelve a la IP ya validada (anti DNS-rebinding).
+// Honra la opción `all` (la usa autoSelectFamily/Happy Eyeballs desde Node 20):
+// con `all:true` el callback debe devolver un array [{address, family}].
 function lookupFijo(address, family) {
+    const fam = family || (address.includes(':') ? 6 : 4);
     return (hostname, options, callback) => {
         const cb = typeof options === 'function' ? options : callback;
-        cb(null, address, family || (address.includes(':') ? 6 : 4));
+        const opts = typeof options === 'function' ? {} : options || {};
+        if (opts.all) cb(null, [{ address, family: fam }]);
+        else cb(null, address, fam);
     };
 }
 
