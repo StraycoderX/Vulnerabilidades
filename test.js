@@ -130,6 +130,23 @@ test('anti-rebinding: lookupFijo siempre devuelve la IP validada', () => {
     assert.strictEqual(resultado.family, 4);
 });
 
+test('anti-rebinding: lookupFijo honra la opción all (autoSelectFamily, Node 20+)', () => {
+    const lookup = lookupFijo('93.184.216.34', 4);
+    // all:true debe devolver un ARRAY [{address, family}] (Happy Eyeballs).
+    let arr;
+    lookup('host', { all: true }, (err, addrs) => (arr = { err, addrs }));
+    assert.strictEqual(arr.err, null);
+    assert.deepStrictEqual(arr.addrs, [{ address: '93.184.216.34', family: 4 }]);
+    // firma antigua (options es la función callback).
+    let legacy;
+    lookup('host', (err, address) => (legacy = address));
+    assert.strictEqual(legacy, '93.184.216.34');
+    // IPv6: deduce family 6 si no se pasa.
+    let v6;
+    lookupFijo('2606:2800:220:1::1')('host', { all: true }, (e, a) => (v6 = a));
+    assert.deepStrictEqual(v6, [{ address: '2606:2800:220:1::1', family: 6 }]);
+});
+
 test('librerias: detecta versiones vulnerables y compara semver', () => {
     assert.ok(compararVersiones('3.4.1', '3.5.0') < 0);
     assert.strictEqual(compararVersiones('3.5.0', '3.5.0'), 0);

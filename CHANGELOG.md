@@ -5,6 +5,18 @@ Todas las novedades notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.2.4] - 2026-06-09
+
+### Corregido (crítico)
+
+- **`Invalid IP address: undefined` al escanear sitios reales.** Desde Node 20,
+  `autoSelectFamily` (Happy Eyeballs) llama al `lookup` fijado con `all: true`,
+  que espera un array `[{address, family}]`. El `lookupFijo` (y la inspección
+  TLS) solo devolvían el valor posicional, así que Node recibía una IP `undefined`
+  y **fallaba todo escaneo de dominios reales** (dual-stack IPv4/IPv6). Ahora
+  ambos `lookup` honran la opción `all`. Test de integración por nombre de host
+  para evitar la regresión.
+
 ## [2.2.3] - 2026-06-09
 
 Tercera pasada de revisión: dos vulnerabilidades de denegación de servicio (ReDoS)
@@ -123,6 +135,7 @@ continua que revisa seguridad y estructura en cada cambio.
 - Migración de un único fichero a la estructura modular en `src/`.
 - La detección de XSS pasó de expresiones regulares a análisis del DOM tokenizado.
 
+[2.2.4]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.4
 [2.2.3]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.3
 [2.2.2]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.2
 [2.2.1]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.1
