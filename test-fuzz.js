@@ -4,8 +4,11 @@
 // clasificador anti-SSRF y el parser HTML. PRNG con semilla fija => reproducible.
 const test = require('node:test');
 const assert = require('node:assert');
+const { URL } = require('url');
 const { esDireccionPrivada } = require('./src/net');
 const { parsearHTML, parsearAtributos } = require('./src/parser');
+const { analizar } = require('./src/engine');
+const { detectarErrorSQL } = require('./src/active');
 
 function mulberry32(a) {
     return function () {
@@ -86,4 +89,31 @@ test('fuzz: el parser no se degrada (O(n)) con entradas patológicas grandes', (
     t0 = Date.now();
     parsearHTML(scriptEnorme);
     assert.ok(Date.now() - t0 < 1500, 'script enorme: demasiado lento');
+});
+
+test('fuzz: las reglas no se degradan con HTML hostil grande (anti-DoS)', () => {
+    const casos = [
+        '<form>'.repeat(400000), // formularios sin cerrar (era O(n^2))
+        '<a href="x?next=//evil">l</a>'.repeat(60000),
+        '<img onerror="x()">'.repeat(60000),
+        '<script>eval(atob("YQ=="))</script>'.repeat(20000),
+        '<'.repeat(800000) + 'a x="' + '"'.repeat(400000),
+    ];
+    for (const body of casos) {
+        const ctx = { url: new URL('https://hostil.test/'), statusCode: 200, headers: {}, body };
+        const t0 = Date.now();
+        analizar(ctx);
+        const ms = Date.now() - t0;
+        assert.ok(ms < 2500, `reglas demasiado lentas (${ms} ms) con ${(body.length / 1024) | 0} KB`);
+    }
+});
+
+test('fuzz: las firmas SQL no se degradan ante respuestas hostiles (anti-DoS)', () => {
+    for (const semilla of ['SQL syntax ', 'Warning ', 'PostgreSQL ']) {
+        const body = semilla.repeat(300000); // ~3 MB repitiendo el token previo
+        const t0 = Date.now();
+        detectarErrorSQL(body);
+        const ms = Date.now() - t0;
+        assert.ok(ms < 1500, `firmas SQL demasiado lentas (${ms} ms) con "${semilla}"`);
+    }
 });

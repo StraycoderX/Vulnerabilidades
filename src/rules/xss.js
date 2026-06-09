@@ -78,15 +78,19 @@ function analizarXSS(ctx) {
         }));
     }
 
-    // Formularios sin token anti-CSRF (heurística sobre el HTML crudo por la anidación).
-    const forms = (html || '').match(/<\s*form\b[^>]*>[\s\S]*?<\s*\/\s*form\s*>/gi) || [];
-    const sinToken = forms.filter((f) => !/csrf|token|authenticity|_token|nonce/i.test(f));
-    if (sinToken.length) {
-        hallazgos.push(hallazgo({
-            id: 'csrf-sin-token', severidad: 'baja', categoria: 'csrf',
-            mensaje: `${sinToken.length} de ${forms.length} formulario(s) sin token anti-CSRF aparente`,
-            detalle: 'Heurística: no se halló un campo con nombre csrf/token/nonce.',
-        }));
+    // Formularios sin token anti-CSRF. Se cuentan los <form> con el DOM ya
+    // tokenizado (lineal) y se comprueba si hay algún campo anti-CSRF en la
+    // página con una regex lineal. Evita el escaneo cuadrático de [\s\S]*?</form>.
+    const forms = dom.elementos.filter((e) => e.tag === 'form').length;
+    if (forms > 0) {
+        const hayToken = /(?:name|id)\s*=\s*["']?[^"'>\s]*(?:csrf|token|authenticity|_token|nonce)/i.test(html || '');
+        if (!hayToken) {
+            hallazgos.push(hallazgo({
+                id: 'csrf-sin-token', severidad: 'baja', categoria: 'csrf',
+                mensaje: `${forms} formulario(s) y ningún campo anti-CSRF aparente en la página`,
+                detalle: 'Heurística: no se halló un campo con nombre csrf/token/authenticity/nonce.',
+            }));
+        }
     }
 
     // Posible open redirect: parámetro de redirección hacia URL absoluta,

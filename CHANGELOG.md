@@ -5,17 +5,24 @@ Todas las novedades notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
-## [Unreleased]
+## [2.2.3] - 2026-06-09
+
+Tercera pasada de revisión: dos vulnerabilidades de denegación de servicio (ReDoS)
+contra la propia herramienta, encontradas midiendo el peor caso.
+
+### Seguridad (corregido)
+
+- **ReDoS en la regla de formularios**: la regex `[\s\S]*?</form>` era cuadrática;
+  una respuesta hostil de ~1 MB con muchos `<form>` sin cerrar colgaba el escaneo
+  decenas de segundos (con el límite de 5 MB, varios minutos). Ahora se cuentan
+  los formularios con el DOM ya tokenizado (lineal). 56 s → 0,2 s.
+- **ReDoS en las firmas de error SQL** (modo activo): los `.*` sin acotar entre
+  dos tokens eran cuadráticos; se acotan a `.{0,200}`. 34 s → 0,2 s.
 
 ### Añadido
 
-- **Fuzzing** (property-testing) del clasificador anti-SSRF y del parser HTML:
-  ~40k entradas aleatorias y casos patológicos, verificando que no hay crashes,
-  bypasses ni degradación O(n²).
-- **Pipeline de release** (`.github/workflows/release.yml`): al publicar un tag
-  `vX.Y.Z` crea el GitHub Release, publica la imagen en GHCR y, si hay token,
-  en npm.
-- **`THREAT_MODEL.md`**: fronteras de confianza, amenazas y salvaguardas.
+- Tests anti-DoS que ejercitan todas las reglas y las firmas SQL con HTML hostil
+  grande, verificando que se mantienen lineales.
 
 ## [2.2.2] - 2026-06-08
 
@@ -116,6 +123,7 @@ continua que revisa seguridad y estructura en cada cambio.
 - Migración de un único fichero a la estructura modular en `src/`.
 - La detección de XSS pasó de expresiones regulares a análisis del DOM tokenizado.
 
+[2.2.3]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.3
 [2.2.2]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.2
 [2.2.1]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.1
 [2.2.0]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.0
