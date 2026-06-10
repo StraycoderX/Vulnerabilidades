@@ -40,6 +40,11 @@ test.before(async () => {
             res.end('<html><body><iframe src="x"></iframe></body></html>');
             return;
         }
+        if (url.pathname === '/notfound') {
+            res.writeHead(404, { 'Content-Type': 'text/html' });
+            res.end('<html><body>No encontrado</body></html>');
+            return;
+        }
         if (url.pathname === '/goto') {
             res.writeHead(302, { Location: '/page2' });
             res.end();
@@ -175,5 +180,39 @@ test('integración: escaneo por NOMBRE DE HOST (autoSelectFamily / Happy Eyeball
         assert.ok(reporte.totalHallazgos >= 1, 'debería analizar sin "Invalid IP address"');
     } finally {
         srv.close();
+    }
+});
+
+test('integración: analiza respuestas 4xx en vez de abortar', async () => {
+    const reporte = await escanear(`${base}/notfound`);
+    assert.strictEqual(reporte.statusCode, 404);
+    assert.ok(reporte.hallazgos.some((f) => f.id === 'csp-ausente'), 'debe analizar cabeceras del 404');
+});
+
+test('integración: enruta a través de HTTP_PROXY cuando está definido', async () => {
+    const recibidas = [];
+    const proxy = http.createServer((req, res) => {
+        recibidas.push(req.url); // debería ser la URL absoluta (http://host:port/...)
+        let u;
+        try { u = new URL(req.url); } catch { res.writeHead(400); return res.end(); }
+        const fwd = http.request(
+            { host: u.hostname, port: u.port, path: u.pathname + u.search, method: 'GET', headers: req.headers },
+            (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); }
+        );
+        fwd.on('error', () => { res.writeHead(502); res.end(); });
+        fwd.end();
+    });
+    await new Promise((r) => proxy.listen(0, '127.0.0.1', r));
+    const prev = process.env.HTTP_PROXY;
+    process.env.HTTP_PROXY = `http://127.0.0.1:${proxy.address().port}`;
+    try {
+        const reporte = await escanear(`${base}/`);
+        assert.ok(reporte.totalHallazgos >= 1, 'debería analizar a través del proxy');
+        assert.ok(recibidas.length >= 1, 'el proxy debería recibir la petición');
+        assert.ok(recibidas[0].startsWith('http://'), `forma absoluta esperada, recibido: ${recibidas[0]}`);
+    } finally {
+        if (prev === undefined) delete process.env.HTTP_PROXY;
+        else process.env.HTTP_PROXY = prev;
+        proxy.close();
     }
 });

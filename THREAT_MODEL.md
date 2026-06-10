@@ -51,6 +51,11 @@ plausibles y las salvaguardas que los mitigan. Es una herramienta de **doble uso
   (compromiso aceptado para compatibilidad con contenedores).
 - Las heurísticas pueden producir falsos positivos/negativos; trátese el informe
   como punto de partida, no como veredicto.
+- Al usar un **proxy** (`HTTP_PROXY`/`HTTPS_PROXY`), la conexión la realiza el
+  proxy, por lo que **no se puede fijar la IP del destino** (el anti DNS-rebinding
+  no aplica) y la resolución final depende del proxy. Se mantienen la validación
+  previa del host y la verificación TLS extremo a extremo. Úsese solo con un
+  proxy de confianza.
 
 ## Reporte de vulnerabilidades
 

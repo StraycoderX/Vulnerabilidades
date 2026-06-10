@@ -2,6 +2,7 @@
 
 const http = require('http');
 const https = require('https');
+const tls = require('tls');
 const dns = require('dns').promises;
 const net = require('net');
 const { URL } = require('url');
@@ -127,26 +128,56 @@ function tlsDesdeSocket(socket) {
     };
 }
 
+// --- Soporte de proxy (entornos corporativos) ------------------------------
+// Devuelve la URL del proxy aplicable (HTTP_PROXY/HTTPS_PROXY) respetando
+// NO_PROXY, o null si no aplica. Nota: a través de un proxy NO se puede fijar la
+// IP del destino (conecta el proxy), por lo que el anti DNS-rebinding no aplica;
+// sí se mantienen la validación previa del host (anti-SSRF) y la verificación TLS
+// extremo a extremo. Úsese solo con un proxy de confianza.
+function proxyParaUrl(url) {
+    const host = url.hostname;
+    const noProxy = process.env.NO_PROXY || process.env.no_proxy || '';
+    for (let entrada of noProxy.split(',')) {
+        entrada = entrada.trim();
+        if (!entrada) continue;
+        if (entrada === '*') return null;
+        const dom = entrada.replace(/^\./, '');
+        if (host === dom || host.endsWith('.' + dom)) return null;
+    }
+    const env =
+        url.protocol === 'https:'
+            ? process.env.HTTPS_PROXY || process.env.https_proxy
+            : process.env.HTTP_PROXY || process.env.http_proxy;
+    if (!env) return null;
+    try {
+        return new URL(/^\w+:\/\//.test(env) ? env : `http://${env}`);
+    } catch {
+        return null;
+    }
+}
+
+function cabecerasProxy(proxy) {
+    if (!proxy.username && !proxy.password) return {};
+    const cred = Buffer.from(
+        `${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`
+    ).toString('base64');
+    return { 'Proxy-Authorization': `Basic ${cred}` };
+}
+
 // --- Descarga del HTML con controles de seguridad --------------------------
 // Devuelve { statusCode, headers, body, url, tls } donde `url` es la URL final
 // (tras redirecciones) y `tls` la info del certificado (en https con cert válido).
+// Analiza CUALQUIER respuesta final (incluidas 4xx/5xx: sus cabeceras importan).
 function descargar(target, extra = {}, redirecciones = 0) {
     const { url, address, family } = target;
     return new Promise((resolve, reject) => {
         const esHttps = url.protocol === 'https:';
-        const cliente = esHttps ? https : http;
-
-        const opciones = {
-            rejectUnauthorized: true,
-            lookup: lookupFijo(address, family),
-            agent: esHttps ? httpsAgent : httpAgent,
-            headers: { ...CABECERAS_BASE, ...(extra.headers || {}) },
-        };
+        const proxy = proxyParaUrl(url);
+        const cabeceras = { ...CABECERAS_BASE, ...(extra.headers || {}) };
 
         let cerrado = false;
-        const limpiar = () => {
-            clearTimeout(deadline);
-        };
+        let req = null;
+        const limpiar = () => clearTimeout(deadline);
         const fin = (fn, arg) => {
             if (cerrado) return;
             cerrado = true;
@@ -155,16 +186,16 @@ function descargar(target, extra = {}, redirecciones = 0) {
         };
         // Deadline absoluto: corta la conexión aunque siga goteando bytes.
         const deadline = setTimeout(
-            () => req.destroy(new Error(`Deadline total agotado (${MAX_TOTAL_MS} ms)`)),
+            () => req && req.destroy(new Error(`Deadline total agotado (${MAX_TOTAL_MS} ms)`)),
             MAX_TOTAL_MS
         );
 
-        const req = cliente.get(url, opciones, (resp) => {
+        const onResp = (resp) => {
             const { statusCode, headers } = resp;
 
             // Redirecciones controladas (con revalidación anti-SSRF).
             if (statusCode >= 300 && statusCode < 400 && headers.location) {
-                resp.resume(); // descarta el cuerpo
+                resp.resume();
                 if (extra.noFollow) {
                     return fin(resolve, { statusCode, headers, body: '', url, tls: null });
                 }
@@ -193,15 +224,10 @@ function descargar(target, extra = {}, redirecciones = 0) {
                     .catch(reject);
             }
 
-            if (statusCode < 200 || statusCode >= 300) {
-                resp.resume();
-                return fin(reject, new Error(`Respuesta HTTP ${statusCode}`));
-            }
-
-            const tls = esHttps ? tlsDesdeSocket(resp.socket) : null;
+            // Cuerpo de la respuesta final (2xx y también 4xx/5xx).
+            const tlsInfo = esHttps ? tlsDesdeSocket(resp.socket) : null;
             const trozos = [];
             let total = 0;
-
             resp.on('data', (chunk) => {
                 total += chunk.length;
                 if (total > MAX_RESPONSE_BYTES) {
@@ -210,18 +236,79 @@ function descargar(target, extra = {}, redirecciones = 0) {
                 }
                 trozos.push(chunk);
             });
-
             resp.on('end', () =>
-                fin(resolve, { statusCode, headers, body: Buffer.concat(trozos).toString('utf8'), url, tls })
+                fin(resolve, { statusCode, headers, body: Buffer.concat(trozos).toString('utf8'), url, tls: tlsInfo })
             );
             resp.on('error', (e) => fin(reject, e));
-        });
+        };
 
-        req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-            req.destroy(new Error(`Tiempo de espera agotado (${REQUEST_TIMEOUT_MS} ms)`));
-        });
-        req.on('error', (e) => fin(reject, e));
+        const armar = (r) => {
+            r.setTimeout(REQUEST_TIMEOUT_MS, () =>
+                r.destroy(new Error(`Tiempo de espera agotado (${REQUEST_TIMEOUT_MS} ms)`))
+            );
+            r.on('error', (e) => fin(reject, e));
+        };
+
+        if (proxy && esHttps) {
+            // Túnel CONNECT y luego TLS extremo a extremo sobre el socket tunelizado.
+            req = http.request({
+                host: proxy.hostname,
+                port: Number(proxy.port) || 80,
+                method: 'CONNECT',
+                path: `${url.hostname}:${url.port || 443}`,
+                headers: cabecerasProxy(proxy),
+            });
+            req.on('connect', (res, socket) => {
+                if (res.statusCode !== 200) {
+                    return fin(reject, new Error(`El proxy rechazó CONNECT (HTTP ${res.statusCode})`));
+                }
+                const tlsSock = tls.connect(
+                    { socket, servername: url.hostname, rejectUnauthorized: true },
+                    () => {
+                        const r = https.request(
+                            url,
+                            { agent: false, createConnection: () => tlsSock, headers: cabeceras },
+                            onResp
+                        );
+                        req = r;
+                        armar(r);
+                        r.end();
+                    }
+                );
+                tlsSock.on('error', (e) => fin(reject, e));
+            });
+            armar(req);
+            req.end();
+        } else if (proxy) {
+            // HTTP a través del proxy (forma absoluta en la línea de petición).
+            req = http.request(
+                {
+                    host: proxy.hostname,
+                    port: Number(proxy.port) || 80,
+                    method: 'GET',
+                    path: url.href,
+                    headers: { ...cabeceras, Host: url.host, ...cabecerasProxy(proxy) },
+                },
+                onResp
+            );
+            armar(req);
+            req.end();
+        } else {
+            // Conexión directa con IP fijada (anti DNS-rebinding).
+            const cliente = esHttps ? https : http;
+            req = cliente.get(
+                url,
+                {
+                    rejectUnauthorized: true,
+                    lookup: lookupFijo(address, family),
+                    agent: esHttps ? httpsAgent : httpAgent,
+                    headers: cabeceras,
+                },
+                onResp
+            );
+            armar(req);
+        }
     });
 }
 
-module.exports = { esDireccionPrivada, validarObjetivo, descargar, lookupFijo, tlsDesdeSocket };
+module.exports = { esDireccionPrivada, validarObjetivo, descargar, lookupFijo, tlsDesdeSocket, proxyParaUrl };

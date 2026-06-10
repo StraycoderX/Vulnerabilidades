@@ -5,6 +5,21 @@ Todas las novedades notables de este proyecto se documentan en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [2.2.5] - 2026-06-09
+
+### Añadido
+
+- **Soporte de proxy** (`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`) para entornos
+  corporativos: HTTP por forma absoluta y HTTPS por túnel `CONNECT` con TLS
+  extremo a extremo. A través de proxy no se fija la IP del destino (el anti
+  DNS-rebinding no aplica), pero se mantienen la validación previa de host
+  (anti-SSRF) y la verificación del certificado.
+
+### Cambiado
+
+- Las respuestas **4xx/5xx** ya **se analizan** (sus cabeceras de seguridad
+  siguen siendo relevantes) en vez de abortar con `Respuesta HTTP 4xx`.
+
 ## [2.2.4] - 2026-06-09
 
 ### Corregido (crítico)
@@ -135,6 +150,7 @@ continua que revisa seguridad y estructura en cada cambio.
 - Migración de un único fichero a la estructura modular en `src/`.
 - La detección de XSS pasó de expresiones regulares a análisis del DOM tokenizado.
 
+[2.2.5]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.5
 [2.2.4]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.4
 [2.2.3]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.3
 [2.2.2]: https://github.com/StraycoderX/Vulnerabilidades/releases/tag/v2.2.2
