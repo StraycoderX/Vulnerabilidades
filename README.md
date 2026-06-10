@@ -108,6 +108,30 @@ node index.js --headless https://tu-sitio.example/
 Sin Playwright instalado, `--headless` muestra un mensaje con estas instrucciones
 y no afecta a los demás modos.
 
+## Proxy (entornos corporativos)
+
+Si estás detrás de un proxy, define las variables de entorno estándar y la
+herramienta las usará automáticamente:
+
+```bash
+# Linux/macOS
+export HTTPS_PROXY=http://usuario:clave@proxy.empresa:8080
+export HTTP_PROXY=http://proxy.empresa:8080
+export NO_PROXY=localhost,.interno.empresa
+```
+```cmd
+REM Windows (cmd)
+set HTTPS_PROXY=http://proxy.empresa:8080
+```
+
+HTTP usa la forma absoluta y HTTPS un túnel `CONNECT` con TLS extremo a extremo.
+A través de un proxy no se puede fijar la IP del destino (el anti DNS-rebinding
+no aplica), pero se mantienen la validación de host (anti-SSRF) y la verificación
+del certificado. Úsalo solo con un proxy de confianza.
+
+> Las respuestas **4xx/5xx** también se analizan (sus cabeceras de seguridad
+> siguen siendo relevantes); el informe muestra el código de estado.
+
 ## Controles de seguridad de la propia herramienta
 
 - **Anti-SSRF:** resuelve el host y bloquea direcciones internas/privadas

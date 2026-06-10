@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { URL } = require('url');
 
-const { esDireccionPrivada, lookupFijo } = require('./src/net');
+const { esDireccionPrivada, lookupFijo, proxyParaUrl } = require('./src/net');
 const { analizarCabeceras, graduarCSP } = require('./src/rules/headers');
 const { analizarXSS } = require('./src/rules/xss');
 const { analizarOfuscacion } = require('./src/rules/obfuscation');
@@ -145,6 +145,31 @@ test('anti-rebinding: lookupFijo honra la opción all (autoSelectFamily, Node 20
     let v6;
     lookupFijo('2606:2800:220:1::1')('host', { all: true }, (e, a) => (v6 = a));
     assert.deepStrictEqual(v6, [{ address: '2606:2800:220:1::1', family: 6 }]);
+});
+
+test('proxy: proxyParaUrl honra protocolo y NO_PROXY', () => {
+    const limpiar = () => {
+        delete process.env.HTTP_PROXY;
+        delete process.env.HTTPS_PROXY;
+        delete process.env.NO_PROXY;
+    };
+    limpiar();
+    try {
+        assert.strictEqual(proxyParaUrl(new URL('http://x.com/')), null);
+        process.env.HTTP_PROXY = 'http://proxy.local:8080';
+        assert.strictEqual(proxyParaUrl(new URL('http://x.com/')).host, 'proxy.local:8080');
+        // https usa HTTPS_PROXY, no HTTP_PROXY
+        assert.strictEqual(proxyParaUrl(new URL('https://x.com/')), null);
+        process.env.HTTPS_PROXY = 'http://sproxy.local:3128';
+        assert.strictEqual(proxyParaUrl(new URL('https://x.com/')).host, 'sproxy.local:3128');
+        // NO_PROXY excluye el dominio (y sus subdominios)
+        process.env.NO_PROXY = 'x.com';
+        assert.strictEqual(proxyParaUrl(new URL('http://x.com/')), null);
+        assert.strictEqual(proxyParaUrl(new URL('http://sub.x.com/')), null);
+        assert.strictEqual(proxyParaUrl(new URL('http://otro.com/')).host, 'proxy.local:8080');
+    } finally {
+        limpiar();
+    }
 });
 
 test('librerias: detecta versiones vulnerables y compara semver', () => {
